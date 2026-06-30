@@ -1,0 +1,31 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Foods List: Read-only for everyone, write restricted to master admin accounts
+    match /global_foods/{foodId} {
+      allow read: if true;
+      allow write: if request.auth != null && 
+        (request.auth.token.admin == true ||
+         exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    // Admins List: Allow users to read their own admin status, write restricted to Console/Admin SDK
+    match /admins/{adminId} {
+      allow read: if request.auth != null && request.auth.uid == adminId;
+      allow write: if false;
+    }
+    
+    // User Settings, Profile, Custom Foods, Daily Logs, and Saved Meals
+    match /users/{userId} {
+      // Allow read/write access to the user's own root document
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      
+      // Allow read/write access to all subcollections under the user's document
+      match /{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+  }
+}
