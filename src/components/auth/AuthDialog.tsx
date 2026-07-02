@@ -97,10 +97,10 @@ export function AuthDialog({ trigger, open, onOpenChange }: AuthDialogProps) {
     } catch (err: any) {
       console.error(err);
       let errMsg = "An unexpected error occurred.";
-      if (err.code === "auth/user-not-found" || err.code === "auth/wrong-password") {
-        errMsg = "Invalid email or password.";
+      if (err.code === "auth/user-not-found" || err.code === "auth/wrong-password" || err.code === "auth/invalid-credential") {
+        errMsg = "Invalid credentials. If you previously signed up with Google, please use the main Login page to sign in with Google.";
       } else if (err.code === "auth/email-already-in-use") {
-        errMsg = "An account with this email already exists.";
+        errMsg = "An account with this email already exists. Try signing in with your password, or use Google Sign-in on the main Login page.";
       } else if (err.code === "auth/invalid-email") {
         errMsg = "Please enter a valid email address.";
       } else if (err.message) {
