@@ -29,7 +29,7 @@ export function SavedMeals() {
       <div className="grid grid-cols-2 gap-2">
         <button onClick={() => logDay()} disabled={selected.length === 0}
           className="h-10 px-3 rounded-xl bg-secondary hover:bg-muted text-sm font-medium flex items-center justify-center gap-1.5 disabled:opacity-50 transition-colors">
-          <HistoryIcon className="h-4 w-4" /> Log Today
+          <HistoryIcon className="h-4 w-4" /> Add Today's Calories
         </button>
         <button onClick={() => exportPDF({ selected, totals, rda, profile })} disabled={selected.length === 0}
           className="h-10 px-3 rounded-xl bg-accent text-accent-foreground hover:opacity-90 text-sm font-medium flex items-center justify-center gap-1.5 disabled:opacity-50 transition-opacity">

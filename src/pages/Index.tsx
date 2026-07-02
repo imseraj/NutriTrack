@@ -220,7 +220,7 @@ function SavedMealsTab() {
               className="flex-1 inline-flex items-center justify-center gap-1 rounded-md bg-secondary text-secondary-foreground hover:bg-muted px-2.5 py-2 text-xs font-semibold transition-colors"
             >
               <Check className="h-3.5 w-3.5" />
-              Log Today
+              Add Today's Calories
             </button>
             <button
               onClick={() => deleteMeal(meal.id)}
@@ -310,26 +310,24 @@ function CustomFoodsTab() {
       {/* Registered foods list */}
       <div className="lg:col-span-1 glass-card p-6 bg-card border border-border/60 flex flex-col h-[520px]">
         <h3 className="text-lg font-display font-semibold text-primary mb-1">Custom Database</h3>
-        
+
         {isAdmin ? (
           <div className="flex bg-secondary/60 p-1 rounded-lg mb-4">
             <button
               onClick={() => setDbView("personal")}
-              className={`flex-1 text-center py-1.5 text-xs font-semibold rounded-md transition-all ${
-                dbView === "personal"
+              className={`flex-1 text-center py-1.5 text-xs font-semibold rounded-md transition-all ${dbView === "personal"
                   ? "bg-background text-primary shadow-sm"
                   : "text-muted-foreground hover:text-primary"
-              }`}
+                }`}
             >
               Personal ({customFoods.length})
             </button>
             <button
               onClick={() => setDbView("global")}
-              className={`flex-1 text-center py-1.5 text-xs font-semibold rounded-md transition-all ${
-                dbView === "global"
+              className={`flex-1 text-center py-1.5 text-xs font-semibold rounded-md transition-all ${dbView === "global"
                   ? "bg-background text-primary shadow-sm"
                   : "text-muted-foreground hover:text-primary"
-              }`}
+                }`}
             >
               Global ({globalFoods.length})
             </button>
@@ -341,8 +339,8 @@ function CustomFoodsTab() {
         <div className="flex-1 overflow-y-auto space-y-3 pr-1">
           {displayedFoods.length === 0 ? (
             <div className="text-center py-20 text-muted-foreground text-xs font-medium">
-              {dbView === "personal" 
-                ? "No custom foods created yet.\nFill the form to add one!" 
+              {dbView === "personal"
+                ? "No custom foods created yet.\nFill the form to add one!"
                 : "No foods in the global database."}
             </div>
           ) : (
@@ -368,11 +366,10 @@ function CustomFoodsTab() {
                     {((dbView === "global" && isAdmin) || dbView === "personal") && (
                       <button
                         onClick={() => setFoodToEdit(food)}
-                        className={`p-1 rounded-md transition-colors ${
-                          foodToEdit?.id === food.id
+                        className={`p-1 rounded-md transition-colors ${foodToEdit?.id === food.id
                             ? "text-primary bg-secondary/80"
                             : "text-muted-foreground hover:text-primary hover:bg-secondary"
-                        }`}
+                          }`}
                         title="Edit Food Details"
                       >
                         <Edit className="h-3.5 w-3.5" />
@@ -484,9 +481,9 @@ const Index = () => {
                 </div>
                 <Flame className="h-5 w-5 text-accent" />
               </div>
-              
+
               <FoodTable />
-              
+
               {/* 1. Daily Energy & Hydration (Water) side-by-side at the top */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <DailyEnergyTile />
@@ -577,8 +574,8 @@ const Index = () => {
             <section className="space-y-2">
               <h4 className="font-semibold text-primary">1. Data Ownership & Storage</h4>
               <p>
-                Your nutrition records, daily logs, water intake, and custom foods belong entirely to you. 
-                When using guest mode, this data is saved strictly inside your browser's local cache (localStorage). 
+                Your nutrition records, daily logs, water intake, and custom foods belong entirely to you.
+                When using guest mode, this data is saved strictly inside your browser's local cache (localStorage).
                 If you create an account, your data is securely stored and synchronized via Google Firebase.
               </p>
             </section>
@@ -723,8 +720,8 @@ const Index = () => {
           <div className="py-4 space-y-4">
             <div className="p-5 bg-muted/40 border border-border/40 rounded-xl space-y-2 text-center">
               <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">General Support & Feedback</p>
-              <a 
-                href="mailto:serajahmed117@gmail.com" 
+              <a
+                href="mailto:serajahmed117@gmail.com"
                 className="text-lg font-semibold text-primary hover:text-accent transition-colors block"
               >
                 serajahmed117@gmail.com

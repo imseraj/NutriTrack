@@ -135,7 +135,7 @@ export function FoodTable() {
             onClick={handleLogDay}
             className="text-xs font-semibold text-primary-foreground hover:opacity-90 flex items-center gap-1.5 gradient-primary disabled:opacity-50 disabled:pointer-events-none px-3.5 py-1.5 rounded-xl transition-all shadow-glow"
           >
-            <Check className="h-3.5 w-3.5" /> Log Today's Calories
+            <Check className="h-3.5 w-3.5" /> Add Today's Calories
           </button>
 
           <Dialog open={saveMealOpen} onOpenChange={setSaveMealOpen}>
@@ -312,7 +312,7 @@ export function FoodTable() {
                             </>
                           )}
                         </motion.tr>
-                        
+
                         <AnimatePresence initial={false}>
                           {expanded[item.uid] && (() => {
                             const r = sliderRange(item.unit);
@@ -442,7 +442,7 @@ export function FoodTable() {
                             </button>
                           </td>
                         </motion.tr>
-                        
+
                         <AnimatePresence initial={false}>
                           {expanded[item.uid] && (
                             <motion.tr key={item.uid + "-exp"}
@@ -528,7 +528,7 @@ export function FoodTable() {
                     <td className={`px-2 h-[40px] align-middle py-0 text-right tabular-nums ${pctClass(pct(totals.calories, rda.calories))}`}>{pct(totals.calories, rda.calories)}%</td>
                   ) : (
                     <>
-                      {(["calories","protein","carbohydrates","fat","fiber","sugar"] as const).map((k) => {
+                      {(["calories", "protein", "carbohydrates", "fat", "fiber", "sugar"] as const).map((k) => {
                         const p = pct(totals[k], (rda as Record<string, number>)[k] ?? 0);
                         return <td key={k} className={`px-2 h-[40px] align-middle py-0 text-right tabular-nums ${pctClass(p)} ${k === 'sugar' ? 'pr-4' : ''}`}>{p}%</td>;
                       })}
@@ -597,7 +597,7 @@ export function FoodTable() {
                 <tr className="bg-muted/30 font-medium h-[40px]">
                   {isMobile && (
                     <>
-                      {(["protein","carbohydrates","fat","fiber","sugar"] as const).map((k) => {
+                      {(["protein", "carbohydrates", "fat", "fiber", "sugar"] as const).map((k) => {
                         const p = pct(totals[k], (rda as Record<string, number>)[k] ?? 0);
                         return <td key={k} className={`px-2 h-[40px] align-middle py-0 text-right tabular-nums ${pctClass(p)} ${k === 'sugar' ? 'pr-4' : ''}`}>{p}%</td>;
                       })}

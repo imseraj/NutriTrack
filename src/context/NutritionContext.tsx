@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
 import { toast } from "@/hooks/use-toast";
 import { Food, Unit, RDA, computeRDA, RDA_DEFAULT } from "@/data/foods";
-import { SelectedFood, sumNutrition } from "@/lib/nutrition";
+import { SelectedFood, sumNutrition, emptyTotals } from "@/lib/nutrition";
 import { auth as fbAuth, db as fbDb, isFirebaseConfigured } from "@/lib/firebase";
 import {
   doc,
@@ -64,7 +64,7 @@ interface Ctx {
   deleteMeal: (id: string) => void;
   recentFoods: Food[];
   recentQuantities: number[];
-  logDay: (customTotals?: ReturnType<typeof sumNutrition>, customCount?: number) => Promise<void>;
+  logDay: (customTotals?: ReturnType<typeof sumNutrition>, customCount?: number, targetDate?: string) => Promise<void>;
   updateLogCalories: (date: string, calories: number) => Promise<void>;
   history: DailyEntry[];
   theme: "light" | "dark";
@@ -605,13 +605,38 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logDay = async (customTotals?: ReturnType<typeof sumNutrition>, customCount?: number) => {
-    const today = new Date().toISOString().slice(0, 10);
-    const newEntry = { 
-      date: today, 
-      totals: customTotals ?? totals, 
-      itemCount: customCount ?? selected.length 
-    };
+  // Helper to get local date string (YYYY-MM-DD) without UTC shift
+  const getLocalDateStr = (d: Date = new Date()): string => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const logDay = async (customTotals?: ReturnType<typeof sumNutrition>, customCount?: number, targetDate?: string) => {
+    const today = targetDate || getLocalDateStr();
+    const currentTotals = customTotals ?? totals;
+    const currentCount = customCount ?? selected.length;
+
+    // Find any existing entry for today and accumulate onto it
+    const existing = history.find((h) => h.date === today);
+    let mergedTotals: ReturnType<typeof sumNutrition>;
+    let mergedCount: number;
+
+    if (existing) {
+      // Add current plate totals to the already-logged totals
+      const merged = { ...existing.totals } as Record<string, number>;
+      (Object.keys(currentTotals) as (keyof typeof currentTotals)[]).forEach((k) => {
+        merged[k as string] = (merged[k as string] ?? 0) + (currentTotals[k] as number);
+      });
+      mergedTotals = merged as ReturnType<typeof sumNutrition>;
+      mergedCount = existing.itemCount + currentCount;
+    } else {
+      mergedTotals = currentTotals;
+      mergedCount = currentCount;
+    }
+
+    const newEntry = { date: today, totals: mergedTotals, itemCount: mergedCount };
 
     if (user && fbDb) {
       await setDoc(doc(fbDb, "users", user.uid, "daily_logs", today), newEntry);
@@ -625,20 +650,34 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
 
   const updateLogCalories = async (date: string, calories: number) => {
     const entry = history.find((h) => h.date === date);
-    if (!entry) return;
-
-    const updatedEntry = {
-      ...entry,
-      totals: {
-        ...entry.totals,
-        calories: calories
-      }
-    };
+    let updatedEntry;
+    
+    if (entry) {
+      updatedEntry = {
+        ...entry,
+        totals: {
+          ...entry.totals,
+          calories: calories
+        }
+      };
+    } else {
+      updatedEntry = {
+        date,
+        totals: {
+          ...emptyTotals(),
+          calories: calories
+        },
+        itemCount: 0
+      };
+    }
 
     if (user && fbDb) {
       await setDoc(doc(fbDb, "users", user.uid, "daily_logs", date), updatedEntry);
     } else {
-      setHistory((h) => h.map((d) => (d.date === date ? updatedEntry : d)));
+      setHistory((h) => {
+        const others = h.filter((d) => d.date !== date);
+        return [...others, updatedEntry].sort((a, b) => a.date.localeCompare(b.date)).slice(-14);
+      });
     }
   };
 

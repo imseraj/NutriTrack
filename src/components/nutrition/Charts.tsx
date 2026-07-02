@@ -119,13 +119,27 @@ export function HistoryChart() {
     const entry = history.find((h) => h.date === date);
     if (entry) {
       setCaloriesVal(Math.round(entry.totals.calories).toString());
+    } else {
+      setCaloriesVal("");
     }
   };
 
-  const data = history.map((h) => ({
-    date: h.date.slice(5),
-    calories: Math.round(h.totals.calories),
-  }));
+  // Helper to get local date string
+  const getLocalDateStr = (): string => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const data = history.map((h) => {
+    const [year, month, day] = h.date.split("-");
+    return {
+      date: `${day}-${month}`,
+      calories: Math.round(h.totals.calories),
+    };
+  });
   return (
     <div className="glass-card p-5">
       <div className="flex items-center justify-between mb-3">
@@ -136,43 +150,41 @@ export function HistoryChart() {
           <h3 className="font-semibold">Weekly Calorie Trend</h3>
         </div>
 
-        {history.length > 0 && (
-          <Dialog open={dialogOpen} onOpenChange={(open) => {
-            setDialogOpen(open);
-            if (open && history.length > 0) {
-              const lastEntry = history[history.length - 1];
-              setSelectedDate(lastEntry.date);
-              setCaloriesVal(Math.round(lastEntry.totals.calories).toString());
-            }
-          }}>
-            <DialogTrigger asChild>
-              <button className="text-xs font-semibold text-primary hover:text-primary-glow flex items-center gap-1.5 bg-secondary/50 hover:bg-secondary px-3 py-1.5 rounded-xl transition-all border border-border/20">
-                <Pencil className="h-3 w-3" />
-                Modify Calories
-              </button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md rounded-3xl">
-              <DialogHeader>
-                <DialogTitle className="text-lg font-semibold">Modify Logged Calories</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 py-2 text-sm">
-                <p className="text-xs text-muted-foreground">
-                  Select a logged date and enter the corrected calorie intake.
-                </p>
+        {/* We can always show this button now, even if history is empty */}
+        <Dialog open={dialogOpen} onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (open && history.length > 0 && !selectedDate) {
+            const lastEntry = history[history.length - 1];
+            setSelectedDate(lastEntry.date);
+            setCaloriesVal(Math.round(lastEntry.totals.calories).toString());
+          } else if (open && !selectedDate) {
+            setSelectedDate(getLocalDateStr());
+          }
+        }}>
+          <DialogTrigger asChild>
+            <button className="text-xs font-semibold text-primary hover:text-primary-glow flex items-center gap-1.5 bg-secondary/50 hover:bg-secondary px-3 py-1.5 rounded-xl transition-all border border-border/20">
+              <Pencil className="h-3 w-3" />
+              Add / Modify
+            </button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-md rounded-3xl">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-semibold">Add / Modify Calories</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2 text-sm">
+              <p className="text-xs text-muted-foreground">
+                Select a date and enter the calorie intake to add missing records or modify existing ones.
+              </p>
                 <div className="space-y-1.5">
-                  <Label htmlFor="logDate" className="text-xs font-bold text-muted-foreground">Logged Date</Label>
-                  <select
+                  <Label htmlFor="logDate" className="text-xs font-bold text-muted-foreground">Date</Label>
+                  <input
+                    type="date"
                     id="logDate"
                     value={selectedDate}
+                    max={getLocalDateStr()}
                     onChange={(e) => handleDateChange(e.target.value)}
-                    className="w-full h-10 px-3 rounded-xl bg-background border border-border text-sm outline-none focus:border-primary"
-                  >
-                    {history.map((h) => (
-                      <option key={h.date} value={h.date}>
-                        {h.date} ({Math.round(h.totals.calories)} kcal)
-                      </option>
-                    ))}
-                  </select>
+                    className="w-full h-10 px-3 rounded-xl bg-background border border-border text-sm outline-none focus:border-primary text-primary"
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="logCalories" className="text-xs font-bold text-muted-foreground">Calorie Intake (kcal)</Label>
@@ -206,7 +218,6 @@ export function HistoryChart() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-        )}
       </div>
       <div className="h-44">
         {data.length === 0 ? (
