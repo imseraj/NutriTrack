@@ -5,8 +5,8 @@
 @layer base {
   :root {
     /* Sage & Cream palette
-       cream #f5f0e8, mist #dce5d4, sage #a8c0a0, deep-sage #7d9b76 */
-    --background: 36 35% 93%;        /* #f5f0e8 */
+       cleaner-cream #f8f6f0, mist #dce5d4, sage #a8c0a0, deep-sage #7d9b76 */
+    --background: 40 33% 97%;        /* Brighter, cleaner cream */
     --foreground: 130 18% 18%;       /* deep sage ink */
 
     --card: 0 0% 100%;
@@ -159,4 +159,8 @@
   .scrollbar-sage::-webkit-scrollbar-track { background: hsl(var(--secondary) / 0.3); border-radius: 999px; }
   .scrollbar-sage::-webkit-scrollbar-thumb { background: hsl(var(--primary)); border-radius: 999px; }
   .scrollbar-sage::-webkit-scrollbar-thumb:hover { background: hsl(var(--primary-glow)); }
+  .bg-dot-pattern {
+    background-image: radial-gradient(hsl(var(--primary) / 0.15) 1.5px, transparent 1.5px);
+    background-size: 32px 32px;
+  }
 }

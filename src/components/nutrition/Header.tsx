@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Moon, Sun, Leaf, User, Save, LogOut, Loader2, LogIn, ChevronDown } from "lucide-react";
+import { Moon, Sun, Leaf, User, Save, LogOut, Loader2, LogIn, ChevronDown, Key, Eye, EyeOff } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useNutrition } from "@/context/NutritionContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
@@ -38,7 +38,56 @@ export function Header() {
   } = useNutrition();
   const [mealName, setMealName] = useState("");
   const [openSave, setOpenSave] = useState(false);
+  const [openPasswordDialog, setOpenPasswordDialog] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
   const navigate = useNavigate();
+
+  const handleChangePassword = async () => {
+    if (!currentPassword) {
+      toast({ title: "Error", description: "Please enter your current password.", variant: "destructive" });
+      return;
+    }
+    if (!newPassword || newPassword.length < 6) {
+      toast({ title: "Error", description: "Password must be at least 6 characters.", variant: "destructive" });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast({ title: "Error", description: "Passwords do not match.", variant: "destructive" });
+      return;
+    }
+    setIsChangingPassword(true);
+    try {
+      const { updatePassword, reauthenticateWithCredential, EmailAuthProvider } = await import("firebase/auth");
+      
+      if (user?.email) {
+        const credential = EmailAuthProvider.credential(user.email, currentPassword);
+        await reauthenticateWithCredential(user, credential);
+      }
+
+      await updatePassword(user!, newPassword);
+      toast({ title: "Success", description: "Password updated successfully." });
+      setOpenPasswordDialog(false);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (error: any) {
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
+        toast({ title: "Error", description: "Incorrect current password.", variant: "destructive" });
+      } else if (error.code === 'auth/requires-recent-login') {
+        toast({ title: "Authentication required", description: "Please log out and log back in to change your password.", variant: "destructive" });
+      } else {
+         toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
 
   const handleSignOut = async () => {
     try {
@@ -65,7 +114,7 @@ export function Header() {
   return (
     <header className="sticky top-0 z-40 backdrop-blur-xl bg-background/80 border-b border-border/60">
       <div className="max-w-7xl mx-auto px-4 md:px-8 h-16 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+        <Link to="/" className="flex items-center gap-3 hover:opacity-90 transition-opacity">
           <div className="h-10 w-10 rounded-2xl bg-primary grid place-items-center shadow-card">
             <Leaf className="h-5 w-5 text-primary-foreground" />
           </div>
@@ -73,7 +122,7 @@ export function Header() {
             <span className="text-base font-display font-semibold tracking-tight text-primary block">NutriTrack</span>
             <p className="text-[10px] text-accent -mt-0.5 hidden sm:block uppercase tracking-[0.18em] font-semibold">Track · Learn · Thrive</p>
           </div>
-        </div>
+        </Link>
 
         <div className="flex items-center gap-2">
           {/* User auth state or guest indicators */}
@@ -84,6 +133,7 @@ export function Header() {
                 <span className="hidden sm:inline">Syncing...</span>
               </button>
             ) : user ? (
+              <>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button className="h-9 px-2.5 rounded-full bg-secondary hover:bg-muted flex items-center gap-1.5 text-xs font-medium transition-colors">
@@ -102,12 +152,95 @@ export function Header() {
                     <span className="font-semibold text-primary">{user.email}</span>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setOpenPasswordDialog(true)} className="text-xs cursor-pointer gap-2">
+                    <Key className="h-3.5 w-3.5" />
+                    Change Password
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={handleSignOut} className="text-xs cursor-pointer text-destructive focus:text-destructive gap-2">
                     <LogOut className="h-3.5 w-3.5" />
                     Log Out
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              <Dialog open={openPasswordDialog} onOpenChange={setOpenPasswordDialog}>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Change Password</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-3 pt-2">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Current Password</Label>
+                      <div className="relative">
+                        <Input 
+                          type={showCurrentPassword ? "text" : "password"} 
+                          value={currentPassword} 
+                          onChange={(e) => setCurrentPassword(e.target.value)}
+                          placeholder="Enter current password" 
+                          className="pr-10"
+                        />
+                        <button 
+                          type="button"
+                          onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">New Password</Label>
+                      <div className="relative">
+                        <Input 
+                          type={showNewPassword ? "text" : "password"} 
+                          value={newPassword} 
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          placeholder="Enter new password" 
+                          className="pr-10"
+                        />
+                        <button 
+                          type="button"
+                          onClick={() => setShowNewPassword(!showNewPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Confirm Password</Label>
+                      <div className="relative">
+                        <Input 
+                          type={showConfirmPassword ? "text" : "password"} 
+                          value={confirmPassword} 
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          placeholder="Confirm new password" 
+                          className="pr-10"
+                        />
+                        <button 
+                          type="button"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => {
+                      setOpenPasswordDialog(false);
+                      setCurrentPassword("");
+                      setNewPassword("");
+                      setConfirmPassword("");
+                    }}>Cancel</Button>
+                    <Button onClick={handleChangePassword} disabled={isChangingPassword}>
+                      {isChangingPassword && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+                      Update Password
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+              </>
             ) : (
               <Link to="/login">
                 <Button variant="outline" className="h-9 px-4 rounded-full flex items-center gap-1.5 text-xs font-medium">
@@ -129,6 +262,11 @@ export function Header() {
                 <DialogTitle>Your Profile</DialogTitle>
               </DialogHeader>
               <div className="grid grid-cols-2 gap-3 text-sm pt-2">
+                <label className="space-y-1 col-span-2">
+                  <span className="text-xs text-muted-foreground">Name</span>
+                  <Input type="text" value={profile.name || ""} placeholder="e.g. John Doe"
+                    onChange={(e) => setProfile({ ...profile, name: e.target.value })} />
+                </label>
                 <label className="space-y-1">
                   <span className="text-xs text-muted-foreground">Age</span>
                   <Input type="number" value={profile.age || ""} placeholder="e.g. 25"

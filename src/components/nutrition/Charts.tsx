@@ -10,6 +10,14 @@ import { TrendingUp, Activity, Award, FlaskConical, Pencil } from "lucide-react"
 
 export function MicroBarChart() {
   const { totals, rda } = useNutrition();
+  const [isMobile, setIsMobile] = useState(typeof window !== "undefined" ? window.innerWidth <= 768 : false);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   const keys: { k: string; label: string }[] = [
     { k: "vitaminA", label: "Vit A" },
     { k: "vitaminC", label: "Vit C" },
@@ -42,9 +50,29 @@ export function MicroBarChart() {
       </div>
       <div className="h-72">
         <ResponsiveContainer>
-          <BarChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 4 }}>
+          <BarChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 16 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-            <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" interval={0} />
+            <XAxis 
+              dataKey="name" 
+              stroke="hsl(var(--muted-foreground))" 
+              interval={0}
+              tickMargin={10}
+              tick={(props: any) => {
+                const { x, y, payload } = props;
+                const words = isMobile ? payload.value.split(" ") : [payload.value];
+                return (
+                  <g transform={`translate(${x},${y})`}>
+                    <text x={0} y={0} textAnchor="middle" fill="hsl(var(--muted-foreground))" fontSize={10}>
+                      {words.map((word: string, index: number) => (
+                        <tspan textAnchor="middle" x={0} dy={index === 0 ? 10 : 12} key={index}>
+                          {word}
+                        </tspan>
+                      ))}
+                    </text>
+                  </g>
+                );
+              }}
+            />
             <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
             <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }} formatter={(v: number) => `${v}%`} />
             <Bar dataKey="pct" radius={[6, 6, 0, 0]}>

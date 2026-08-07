@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, Mail, Lock, Sparkles, Leaf, ArrowRight, ShieldCheck, Eye, EyeOff } from "lucide-react";
+import { Loader2, Mail, Lock, Sparkles, Leaf, ArrowRight, ShieldCheck, Eye, EyeOff, User } from "lucide-react";
+import { auth } from "@/lib/firebase";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function Login() {
@@ -23,6 +24,7 @@ export default function Login() {
   const location = useLocation();
 
   const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -33,13 +35,14 @@ export default function Login() {
   // If already logged in, redirect to homepage or previous state
   useEffect(() => {
     if (user) {
-      const from = (location.state as any)?.from?.pathname || "/";
+      const from = (location.state as any)?.from?.pathname || "/dashboard";
       navigate(from, { replace: true });
     }
   }, [user, navigate, location]);
 
   const handleToggleMode = (newMode: "login" | "signup" | "forgot") => {
     setMode(newMode);
+    setName("");
     setPassword("");
     setConfirmPassword("");
     setShowPassword(false);
@@ -52,7 +55,7 @@ export default function Login() {
       title: "Guest Mode Activated",
       description: "You are tracking calories offline. Progress will be saved locally.",
     });
-    navigate("/", { replace: true });
+    navigate("/dashboard", { replace: true });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -88,7 +91,8 @@ export default function Login() {
           return;
         }
         await signIn(email, password);
-        toast({ title: "Welcome!", description: "Successfully logged in." });
+        const userName = auth.currentUser?.displayName;
+        toast({ title: `Welcome${userName ? ` back, ${userName}` : "!"}`, description: "Successfully logged in." });
       } else {
         if (!password || !confirmPassword) {
           toast({ title: "Password required", description: "Please confirm your password.", variant: "destructive" });
@@ -105,8 +109,8 @@ export default function Login() {
           setLoading(false);
           return;
         }
-        await signUp(email, password);
-        toast({ title: "Account Created", description: "Welcome to NutriTrack!" });
+        await signUp(email, password, name);
+        toast({ title: "Account Created", description: `Welcome to NutriTrack${name ? `, ${name}` : ""}!` });
       }
     } catch (err: any) {
       console.error(err);
@@ -275,6 +279,25 @@ export default function Login() {
               )}
 
               <form onSubmit={handleSubmit} className="space-y-4">
+                {mode === "signup" && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="name" className="text-xs">Full Name</Label>
+                    <div className="relative">
+                      <Input
+                        id="name"
+                        type="text"
+                        placeholder="John Doe"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        disabled={loading || authLoading}
+                        className="pl-9 h-10 border-border/80"
+                        required
+                      />
+                      <User className="absolute left-3 top-3.5 h-4 w-4 text-muted-foreground/75" />
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-1.5">
                   <Label htmlFor="email" className="text-xs">Email Address</Label>
                   <div className="relative">

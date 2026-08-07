@@ -20,10 +20,12 @@ import {
   onAuthStateChanged,
   User as FirebaseUser,
   GoogleAuthProvider,
-  signInWithPopup
+  signInWithPopup,
+  updateProfile
 } from "firebase/auth";
 
 interface Profile {
+  name?: string;
   age: number;
   gender: "male" | "female";
   weight: number;
@@ -87,7 +89,7 @@ interface Ctx {
   user: FirebaseUser | null;
   loading: boolean;
   signIn: (email: string, pass: string) => Promise<void>;
-  signUp: (email: string, pass: string) => Promise<void>;
+  signUp: (email: string, pass: string, name?: string) => Promise<void>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
@@ -130,7 +132,7 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
   // Local states
   const [selected, setSelected] = useState<SelectedFood[]>(() => load("selected", []));
   const [profile, setProfileState] = useState<Profile>(() =>
-    load("profile", { age: 28, gender: "male", weight: 70, height: 175, activityLevel: 1.375, goal: "maintain" })
+    load("profile", { name: "", age: 28, gender: "male", weight: 70, height: 175, activityLevel: 1.375, goal: "maintain" })
   );
   const [savedMeals, setSavedMeals] = useState<SavedMeal[]>(() => load("meals", []));
   const [recentFoods, setRecentFoods] = useState<Food[]>(() => load("recent", []));
@@ -183,18 +185,34 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    // Fallback: If Firebase Auth fails to initialize (e.g., IndexedDB blocked on mobile),
+    // force unlock the UI after 8 seconds.
+    const fallbackTimer = setTimeout(() => {
+      setLoading(false);
+    }, 8000);
+
     const unsubscribe = onAuthStateChanged(fbAuth, async (u) => {
+      clearTimeout(fallbackTimer);
       setUser(u);
       if (u) {
         setLoading(true);
         try {
-          await checkAndMigrate(u.uid);
+          // Wrap in timeouts to prevent infinite loading and clear timeout to prevent unhandled rejections
+          const withTimeout = <T,>(promise: Promise<T>, ms: number, msg: string): Promise<T> => {
+            let timer: ReturnType<typeof setTimeout>;
+            const timeoutPromise = new Promise<never>((_, reject) => {
+              timer = setTimeout(() => reject(new Error(msg)), ms);
+            });
+            return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
+          };
+          
+          await withTimeout(checkAndMigrate(u), 5000, "checkAndMigrate timeout");
 
           // Verify admin status dynamically from both custom claims and 'admins' collection
           let adminStatus = false;
           try {
-            const idTokenResult = await u.getIdTokenResult();
-            if (idTokenResult.claims.admin === true) {
+            const idTokenResult = await withTimeout(u.getIdTokenResult(), 3000, "getIdTokenResult timeout");
+            if (idTokenResult && idTokenResult.claims.admin === true) {
               adminStatus = true;
             }
           } catch (tokenErr) {
@@ -203,8 +221,8 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
 
           if (!adminStatus && fbDb) {
             const adminDocRef = doc(fbDb, "admins", u.uid);
-            const adminDocSnap = await getDoc(adminDocRef);
-            adminStatus = adminDocSnap.exists();
+            const adminDocSnap = await withTimeout(getDoc(adminDocRef), 3000, "admin getDoc timeout");
+            adminStatus = adminDocSnap ? adminDocSnap.exists() : false;
           }
           console.log(`[Admin Check] UID: ${u.uid}, Email: ${u.email}, Is Admin: ${adminStatus}`);
           setIsAdmin(adminStatus);
@@ -349,17 +367,18 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
   }, [globalFoods, customFoods]);
 
   // Initializes settings for a new user with empty/default values
-  const checkAndMigrate = async (uid: string) => {
+  const checkAndMigrate = async (u: FirebaseUser) => {
     if (!fbDb) return;
 
     // 1. Settings initialization
-    const settingsRef = doc(fbDb, "users", uid, "profile", "settings");
+    const settingsRef = doc(fbDb, "users", u.uid, "profile", "settings");
     const settingsSnap = await getDoc(settingsRef);
     if (!settingsSnap.exists()) {
       // First time login: trigger configuration modal
       setOpenProfile(true);
 
       const emptyProfile: Profile = {
+        name: u.displayName || "",
         age: 0,
         gender: "male",
         weight: 0,
@@ -420,9 +439,12 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signUp = async (email: string, pass: string) => {
+  const signUp = async (email: string, pass: string, name?: string) => {
     if (!isFirebaseConfigured || !fbAuth) throw new Error("Firebase is not configured");
-    await createUserWithEmailAndPassword(fbAuth, email, pass);
+    const cred = await createUserWithEmailAndPassword(fbAuth, email, pass);
+    if (name && cred.user) {
+      await updateProfile(cred.user, { displayName: name });
+    }
   };
 
   const signOut = async () => {
