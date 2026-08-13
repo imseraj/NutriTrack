@@ -290,7 +290,7 @@ export function FoodTable() {
                               <td className="px-1 h-[56px] align-middle py-0">
                                 <select value={item.unit} onChange={(e) => updateItem(item.uid, { unit: e.target.value as Unit })}
                                   className="h-7 w-full px-1 rounded-lg bg-background border border-border text-[10px] outline-none focus:border-primary">
-                                  {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                                  <option value={item.food.baseUnit}>{item.food.baseUnit}</option>
                                 </select>
                               </td>
                               <td className="px-2 h-[56px] align-middle py-0 text-right font-semibold">{formatNum(n.calories, 0)}</td>
@@ -300,7 +300,7 @@ export function FoodTable() {
                               <td className="px-2 h-[56px] align-middle py-0">
                                 <select value={item.unit} onChange={(e) => updateItem(item.uid, { unit: e.target.value as Unit })}
                                   className="h-8 px-2 rounded-lg bg-background border border-border text-xs outline-none focus:border-primary">
-                                  {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                                  <option value={item.food.baseUnit}>{item.food.baseUnit}</option>
                                 </select>
                               </td>
                               <td className="px-2 h-[56px] align-middle py-0 text-right font-semibold">{formatNum(n.calories, 0)}</td>
