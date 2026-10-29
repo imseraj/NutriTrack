@@ -7,8 +7,7 @@ import React from "react";
 
 export default function Index() {
   const { user } = useNutrition();
-  const isGuest = sessionStorage.getItem("nutritrack:guest") === "true";
-  const hasAccess = user || isGuest;
+  const hasAccess = Boolean(user);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -287,8 +286,8 @@ export default function Index() {
               />
               <FeatureCard
                 icon={<Activity className="h-6 w-6" />}
-                title="36-Nutrient Tracking"
-                description="Go beyond just calories. Track 6 macronutrients and 30 essential micronutrients including vitamins and trace minerals."
+                title="37-Nutrient Tracking"
+                description="Track core macros, fat types, 13 vitamins, 13 minerals, and choline, with USDA food data where reported."
                 delay={0.2}
               />
               <FeatureCard

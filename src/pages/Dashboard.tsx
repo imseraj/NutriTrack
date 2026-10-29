@@ -2,12 +2,13 @@ import { useNutrition } from "@/context/NutritionContext";
 import { Header } from "@/components/nutrition/Header";
 import { FoodSearch } from "@/components/nutrition/FoodSearch";
 import { FoodTable } from "@/components/nutrition/FoodTable";
+import { FoodDetails } from "@/components/nutrition/FoodDetails";
 import { RDATable } from "@/components/nutrition/RDATable";
 import { MacroPie, HistoryChart, MicroBarChart } from "@/components/nutrition/Charts";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatNum, sumNutrition } from "@/lib/nutrition";
 import { motion } from "framer-motion";
-import { Flame, Sparkles, Bookmark, Utensils, BarChart3, Trash2, Plus, Loader2, Edit, Check, User, AlertCircle } from "lucide-react";
+import { Flame, Sparkles, Bookmark, Utensils, BarChart3, Trash2, Plus, Loader2, Edit, Check, User, AlertCircle, FileText } from "lucide-react";
 import { WaterTracker } from "@/components/nutrition/WaterTracker";
 import { InsightsPanel } from "@/components/nutrition/InsightsPanel";
 import { CustomFoodForm } from "@/components/nutrition/CustomFoodForm";
@@ -405,7 +406,7 @@ function CustomFoodsTab() {
 }
 
 const Dashboard = () => {
-  const { user, profile, loading, isFirebaseConfigured, setOpenProfile } = useNutrition();
+  const { user, profile, loading, setOpenProfile } = useNutrition();
   const navigate = useNavigate();
 
   const [showPrivacy, setShowPrivacy] = useState(false);
@@ -413,15 +414,16 @@ const Dashboard = () => {
   const [showContact, setShowContact] = useState(false);
 
   useEffect(() => {
-    if (!loading && isFirebaseConfigured) {
-      const isGuest = sessionStorage.getItem("nutritrack:guest") === "true";
-      if (!user && !isGuest) {
-        navigate("/login");
-      }
-    }
-  }, [user, loading, isFirebaseConfigured, navigate]);
+    const root = document.documentElement;
+    root.classList.add("scrollbar-sage");
+    return () => root.classList.remove("scrollbar-sage");
+  }, []);
 
-  if (loading) {
+  useEffect(() => {
+    if (!loading && !user) navigate("/login", { replace: true });
+  }, [user, loading, navigate]);
+
+  if (loading || !user) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-3">
         <Loader2 className="h-8 w-8 text-primary animate-spin" />
@@ -485,7 +487,7 @@ const Dashboard = () => {
 
         <section>
           <Tabs defaultValue="plate" className="w-full">
-            <TabsList className={`grid w-full max-w-xl ${user ? 'grid-cols-4' : 'grid-cols-2'}`}>
+            <TabsList className={`grid w-full max-w-3xl ${user ? 'grid-cols-2 sm:grid-cols-5' : 'grid-cols-2'}`}>
               <TabsTrigger value="plate" className="gap-2 text-xs sm:text-sm">
                 <Utensils className="h-4 w-4" /> Your Plate
               </TabsTrigger>
@@ -494,6 +496,9 @@ const Dashboard = () => {
               </TabsTrigger>
               {user && (
                 <>
+                  <TabsTrigger value="food-details" className="gap-2 text-xs sm:text-sm">
+                    <FileText className="h-4 w-4" /> Food Details
+                  </TabsTrigger>
                   <TabsTrigger value="saved" className="gap-2 text-xs sm:text-sm">
                     <Bookmark className="h-4 w-4" /> Saved Meals
                   </TabsTrigger>
@@ -545,6 +550,10 @@ const Dashboard = () => {
 
             {user && (
               <>
+                <TabsContent value="food-details" className="mt-6">
+                  <FoodDetails />
+                </TabsContent>
+
                 <TabsContent value="saved" className="mt-6 space-y-6">
                   <div className="flex items-end justify-between px-1">
                     <div>
@@ -605,9 +614,10 @@ const Dashboard = () => {
             <section className="space-y-2">
               <h4 className="font-semibold text-primary">1. Data Ownership & Storage</h4>
               <p>
-                Your nutrition records, daily logs, water intake, and custom foods belong entirely to you.
-                When using guest mode, this data is saved strictly inside your browser's local cache (localStorage).
-                If you create an account, your data is securely stored and synchronized via Google Firebase.
+                Your nutrition records, daily logs, water intake, and custom foods are stored in your account
+                and synchronized via Google Firebase. Food search terms are sent to USDA FoodData Central
+                through an authenticated Cloud Function; your profile and logs are not included, and the API
+                key is not included in the browser app.
               </p>
             </section>
             <section className="space-y-2">
@@ -625,7 +635,7 @@ const Dashboard = () => {
             <section className="space-y-2">
               <h4 className="font-semibold text-primary">4. Cookies and Cache</h4>
               <p>
-                This application uses local storage cookies solely to manage your session authentication and keep your plate offline-compatible.
+                Local storage is used for your display theme and login-attempt throttling. Nutrition records are stored in your Firebase account.
               </p>
             </section>
           </div>
@@ -683,31 +693,30 @@ const Dashboard = () => {
                 Nutrient RDA Evidence Basis
               </h4>
               <p className="leading-relaxed">
-                NutriTrack tracks 36 nutrients (6 macros + 30 micros). Not all have an official Recommended Dietary Allowance (RDA) set by the NIH. Below is the classification:
+                NutriTrack tracks 37 nutrient values: 6 core macros, 4 fat-profile values, 13 vitamins, 13 minerals, and choline. USDA reports vary by food and database; not every value is available for every item.
               </p>
               <div className="space-y-2.5 text-xs">
                 <div className="p-3 rounded-lg bg-primary/5 border border-primary/15">
                   <p className="font-semibold text-primary mb-1 flex items-center gap-1.5">
-                    <span className="text-sm">✅</span> Official NIH RDA (23 nutrients)
+                    <span className="text-sm">✅</span> RDA-based targets
                   </p>
-                  <p className="leading-relaxed">Protein, Carbohydrates, Fat, Vitamin A, D, E, K, C, B1 (Thiamin), B2 (Riboflavin), B3 (Niacin), B6, B9 (Folate), B12, Calcium, Phosphorus, Magnesium, Iron, Zinc, Iodine, Selenium, Copper, Molybdenum.</p>
+                  <p className="leading-relaxed">Calorie and macro targets use profile-based estimates. Vitamin and mineral targets use established dietary reference values where available.</p>
                   <p className="mt-1.5 text-muted-foreground/80 italic">Personalised based on your age, gender, and life-stage.</p>
                 </div>
                 <div className="p-3 rounded-lg bg-amber-500/5 border border-amber-500/15 dark:bg-amber-400/5 dark:border-amber-400/15">
                   <p className="font-semibold text-amber-600 dark:text-amber-400 mb-1 flex items-center gap-1.5">
-                    <span className="text-sm">⚠️</span> Adequate Intake only — no formal RDA (9 nutrients)
+                    <span className="text-sm">⚠️</span> Adequate Intake and limit values
                   </p>
-                  <p className="leading-relaxed">Fiber, Vitamin B5 (Pantothenic Acid), B7 (Biotin), Sodium, Potassium, Chloride, Manganese, Fluoride, Chromium.</p>
-                  <p className="mt-1.5 text-muted-foreground/80 italic">Targets are Adequate Intakes (AI) — treat as approximations, not precise goals.</p>
+                  <p className="leading-relaxed">Choline and ALA use Adequate Intakes. Saturated fat uses a calorie-based upper limit. These are reference values, not medical advice.</p>
                 </div>
                 <div className="p-3 rounded-lg bg-destructive/5 border border-destructive/15">
                   <p className="font-semibold text-destructive mb-1 flex items-center gap-1.5">
-                    <span className="text-sm">❌</span> No official NIH RDA or AI (4 nutrients)
+                    <span className="text-sm">ℹ️</span> Informational values
                   </p>
                   <div className="space-y-1.5 leading-relaxed">
-                    <p><strong>Sugar (Total):</strong> 90 g target is the EU Reference Intake for <em>total</em> sugars. The WHO 10% guideline is for <em>added</em> sugars only.</p>
-                    <p><strong>Sulfur:</strong> 900 mg is estimated from sulfur-amino acid requirements.</p>
-                    <p><strong>Cobalt:</strong> 1 µg is approximate. Nutritionally relevant only as part of Vitamin B12.</p>
+                    <p><strong>Mono- and polyunsaturated fat:</strong> displayed without a daily target.</p>
+                    <p><strong>Cholesterol:</strong> dietary milligrams are informational; there is no universal daily limit in current U.S. guidance.</p>
+                    <p><strong>Total sugar:</strong> the displayed reference is not an added-sugar limit.</p>
                     <p><strong>Calories:</strong> Calculated via Mifflin-St Jeor / Schofield equations — an estimate, not absolute.</p>
                   </div>
                 </div>
@@ -721,17 +730,14 @@ const Dashboard = () => {
                 Nutrients with Limited Food Data
               </h4>
               <p className="leading-relaxed">
-                Certain nutrients have incomplete data in most food databases (including USDA FoodData Central):
+                USDA data coverage varies by food, source database, and nutrient; unreported values should not be interpreted as measured zeros.
               </p>
               <ul className="space-y-1.5 ml-1 text-xs leading-relaxed">
-                <li className="flex gap-2"><span className="text-muted-foreground/50 select-none">•</span><span><strong>Cobalt</strong> — Rarely reported; B12 tracking covers it.</span></li>
-                <li className="flex gap-2"><span className="text-muted-foreground/50 select-none">•</span><span><strong>Sulfur</strong> — Estimated from sulfur-amino acids; may be inaccurate.</span></li>
-                <li className="flex gap-2"><span className="text-muted-foreground/50 select-none">•</span><span><strong>Chromium</strong> — Sparse data; treat as ballpark estimates.</span></li>
-                <li className="flex gap-2"><span className="text-muted-foreground/50 select-none">•</span><span><strong>Fluoride</strong> — Mainly from water/dental products; food tracking underestimates intake.</span></li>
+                <li className="flex gap-2"><span className="text-muted-foreground/50 select-none">•</span><span><strong>Fatty acids and choline</strong> — May be absent from older or abridged food records.</span></li>
                 <li className="flex gap-2"><span className="text-muted-foreground/50 select-none">•</span><span><strong>Chloride</strong> — Consumed as table salt; not directly reported by most databases.</span></li>
               </ul>
               <p className="text-[11px] text-muted-foreground/70 italic pt-1 border-t border-border/30">
-                RDA bars may show 0 % for these nutrients even with a balanced diet — this reflects missing data, not a deficiency.
+                Missing nutrient data is not evidence of deficiency or zero intake.
               </p>
             </section>
 

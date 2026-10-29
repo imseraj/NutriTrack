@@ -1,12 +1,15 @@
 import { useState } from "react";
-import { Moon, Sun, Leaf, User, Save, LogOut, Loader2, LogIn, ChevronDown, Key, Eye, EyeOff } from "lucide-react";
+import { Moon, Sun, Leaf, User, Save, LogOut, Loader2, LogIn, ChevronDown, Key, Eye, EyeOff, RotateCcw } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useNutrition } from "@/context/NutritionContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { exportPDF } from "@/lib/pdf";
+import { CoreTargetKey, CoreTargetOverrides, computeRDA } from "@/data/foods";
+import { formatNum } from "@/lib/nutrition";
 import { toast } from "@/hooks/use-toast";
 import { AuthDialog } from "@/components/auth/AuthDialog";
 import {
@@ -18,6 +21,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+
+const coreTargetFields: Array<{ key: CoreTargetKey; label: string; unit: string }> = [
+  { key: "calories", label: "Calories", unit: "kcal" },
+  { key: "protein", label: "Protein", unit: "g" },
+  { key: "carbohydrates", label: "Carbohydrates", unit: "g" },
+  { key: "fat", label: "Fat", unit: "g" },
+  { key: "fiber", label: "Fiber", unit: "g" },
+  { key: "sugar", label: "Total sugar", unit: "g" },
+];
 
 export function Header() {
   const {
@@ -31,11 +43,12 @@ export function Header() {
     saveMeal,
     user,
     signOut,
-    isFirebaseConfigured,
     loading,
     openProfile,
     setOpenProfile
   } = useNutrition();
+  const estimatedTargets = computeRDA(profile);
+  const [customTargetDrafts, setCustomTargetDrafts] = useState<Partial<Record<CoreTargetKey, string>>>({});
   const [mealName, setMealName] = useState("");
   const [openSave, setOpenSave] = useState(false);
   const [openPasswordDialog, setOpenPasswordDialog] = useState(false);
@@ -125,9 +138,7 @@ export function Header() {
         </Link>
 
         <div className="flex items-center gap-2">
-          {/* User auth state or guest indicators */}
-          {isFirebaseConfigured && (
-            loading ? (
+          {loading ? (
               <button className="h-9 px-3 rounded-full bg-secondary flex items-center gap-1.5 text-xs font-medium cursor-wait" disabled>
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 <span className="hidden sm:inline">Syncing...</span>
@@ -247,21 +258,21 @@ export function Header() {
                   <LogIn className="h-3.5 w-3.5" /> Log In
                 </Button>
               </Link>
-            )
-          )}
+            )}
 
           {/* Profile Dialog */}
-          <Dialog open={openProfile} onOpenChange={setOpenProfile}>
+          {user && <Dialog open={openProfile} onOpenChange={setOpenProfile}>
             <DialogTrigger asChild>
               <button className="h-9 px-3 rounded-full bg-secondary hover:bg-muted flex items-center gap-1.5 text-xs font-medium transition-colors">
                 <User className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Profile</span>
               </button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
+            <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-lg">
+              <DialogHeader className="shrink-0">
                 <DialogTitle>Your Profile</DialogTitle>
               </DialogHeader>
-              <div className="grid grid-cols-2 gap-3 text-sm pt-2">
+              <div className="-mr-3 min-h-0 flex-1 overflow-y-auto scrollbar-sage pr-1">
+                <div className="mr-6 grid grid-cols-2 gap-3 pt-2 text-sm">
                 <label className="space-y-1 col-span-2">
                   <span className="text-xs text-muted-foreground">Name</span>
                   <Input type="text" value={profile.name || ""} placeholder="e.g. John Doe"
@@ -269,8 +280,8 @@ export function Header() {
                 </label>
                 <label className="space-y-1">
                   <span className="text-xs text-muted-foreground">Age</span>
-                  <Input type="number" value={profile.age || ""} placeholder="e.g. 25"
-                    onChange={(e) => setProfile({ ...profile, age: parseInt(e.target.value) || 0 })} />
+                  <Input type="number" min="0" max="120" step="0.1" value={profile.age || ""} placeholder="e.g. 25"
+                    onChange={(e) => setProfile({ ...profile, age: parseFloat(e.target.value) || 0 })} />
                 </label>
                 <label className="space-y-1">
                   <span className="text-xs text-muted-foreground">Gender</span>
@@ -305,7 +316,8 @@ export function Header() {
                 </label>
                 <label className="space-y-1 col-span-2">
                   <span className="text-xs text-muted-foreground">Goal</span>
-                  <select value={profile.goal}
+                  <select value={profile.age < 19 || profile.isPregnant || profile.isLactating ? "maintain" : profile.goal}
+                    disabled={profile.age < 19 || !!profile.isPregnant || !!profile.isLactating}
                     onChange={(e) => setProfile({ ...profile, goal: e.target.value as "maintain" | "lose" | "gain" | "muscle_gain" })}
                     className="w-full h-10 px-3 rounded-md bg-background border border-input text-sm outline-none focus:border-primary">
                     <option value="maintain">Maintain</option>
@@ -313,27 +325,183 @@ export function Header() {
                     <option value="gain">Gain weight</option>
                     <option value="muscle_gain">Build muscle</option>
                   </select>
+                  {(profile.age < 19 || profile.isPregnant || profile.isLactating) && (
+                    <span className="block text-[11px] text-muted-foreground">Adult weight-change adjustments are disabled for this life stage.</span>
+                  )}
                 </label>
-                {profile.gender === "female" && profile.age >= 14 && profile.age <= 50 && (
-                  <div className="col-span-2 flex gap-4 pt-1">
+                {profile.gender === "female" && (
+                  <div className="col-span-2 space-y-3 border-t border-border/50 pt-3">
+                    <div className="flex flex-wrap gap-x-6 gap-y-2">
                     <label className="flex items-center gap-2 text-xs">
                       <input type="checkbox" checked={!!profile.isPregnant}
-                        onChange={(e) => setProfile({ ...profile, isPregnant: e.target.checked, isLactating: e.target.checked ? false : profile.isLactating })} />
+                        onChange={(e) => setProfile({
+                          ...profile,
+                          isPregnant: e.target.checked,
+                          isLactating: e.target.checked ? false : profile.isLactating,
+                          useCustomTargets: e.target.checked ? false : profile.useCustomTargets,
+                        })} />
                       Pregnant
                     </label>
                     <label className="flex items-center gap-2 text-xs">
                       <input type="checkbox" checked={!!profile.isLactating}
-                        onChange={(e) => setProfile({ ...profile, isLactating: e.target.checked, isPregnant: e.target.checked ? false : profile.isPregnant })} />
+                        onChange={(e) => setProfile({
+                          ...profile,
+                          isLactating: e.target.checked,
+                          lactationStage: e.target.checked ? profile.lactationStage ?? "firstSixMonths" : profile.lactationStage,
+                          isPregnant: e.target.checked ? false : profile.isPregnant,
+                          useCustomTargets: e.target.checked ? false : profile.useCustomTargets,
+                        })} />
                       Lactating
                     </label>
+                    </div>
+                    {profile.isPregnant && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <label className="space-y-1">
+                          <span className="text-xs text-muted-foreground">Gestational week</span>
+                          <Input type="number" min="1" max="42" step="1" value={profile.gestationalWeeks ?? ""}
+                            onChange={(e) => setProfile({ ...profile, gestationalWeeks: parseInt(e.target.value, 10) || undefined })} />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-xs text-muted-foreground">Pre-pregnancy weight (kg)</span>
+                          <Input type="number" min="1" step="0.1" value={profile.prepregnancyWeight ?? ""}
+                            onChange={(e) => setProfile({ ...profile, prepregnancyWeight: parseFloat(e.target.value) || undefined })} />
+                        </label>
+                        <p className="col-span-2 text-[11px] text-muted-foreground">
+                          Enter both values for the trimester-specific estimate. Without them, the calculator uses the non-pregnant baseline.
+                        </p>
+                      </div>
+                    )}
+                    {profile.isLactating && (
+                      <label className="block space-y-1">
+                        <span className="text-xs text-muted-foreground">Lactation stage</span>
+                        <select value={profile.lactationStage ?? "firstSixMonths"}
+                          onChange={(e) => setProfile({ ...profile, lactationStage: e.target.value as "firstSixMonths" | "sevenToTwelveMonths" })}
+                          className="w-full h-10 px-3 rounded-md bg-background border border-input text-sm outline-none focus:border-primary">
+                          <option value="firstSixMonths">0–6 months, exclusive breastfeeding</option>
+                          <option value="sevenToTwelveMonths">7–12 months, partial breastfeeding</option>
+                        </select>
+                      </label>
+                    )}
                   </div>
                 )}
+                <div className="col-span-2 border-t border-border/50 pt-3">
+                  <div className="mb-3 rounded-lg bg-secondary/30 p-3">
+                    <h3 className="text-xs font-semibold text-primary">
+                      {profile.useCustomTargets ? "Calculated daily targets" : "Estimated daily targets"}
+                    </h3>
+                    {profile.useCustomTargets && (
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">Profile-based estimate before your custom edits.</p>
+                    )}
+                    <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2">
+                      {coreTargetFields.map((field) => (
+                        <div key={field.key} className="flex items-baseline justify-between gap-2 text-xs">
+                          <span className="text-muted-foreground">{field.label}</span>
+                          <span className="font-semibold tabular-nums text-foreground">
+                            {formatNum(estimatedTargets[field.key], field.key === "calories" ? 0 : 1)} {field.unit}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {profile.age >= 19 && !profile.isPregnant && !profile.isLactating ? (
+                    <>
+                      <label className="flex items-center gap-2 text-sm font-medium">
+                        <Checkbox
+                          checked={!!profile.useCustomTargets}
+                          onCheckedChange={(checked) => {
+                            const enabled = checked === true;
+                            setCustomTargetDrafts({});
+                            const customTargets = enabled
+                              ? coreTargetFields.reduce((targets, field) => ({
+                                  ...targets,
+                                  [field.key]: profile.customTargets?.[field.key] ?? estimatedTargets[field.key],
+                                }), {} as CoreTargetOverrides)
+                              : profile.customTargets;
+                            setProfile({ ...profile, useCustomTargets: enabled, customTargets });
+                          }}
+                        />
+                        Edit estimated daily targets
+                      </label>
+                      <p className="mt-1 text-[11px] text-muted-foreground">Micronutrient targets remain profile-based. Custom core targets replace estimates in comparisons and reports.</p>
+                      {profile.useCustomTargets && (
+                        <div className="mt-3 space-y-3">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            {coreTargetFields.map((field) => (
+                              <label key={field.key} className="space-y-1">
+                                <span className="text-xs text-muted-foreground">{field.label} ({field.unit})</span>
+                                <Input type="number" min="0" step="any"
+                                  value={customTargetDrafts[field.key] ?? String(profile.customTargets?.[field.key] ?? estimatedTargets[field.key])}
+                                  onChange={(e) => {
+                                    const rawValue = e.target.value;
+                                    setCustomTargetDrafts((drafts) => ({ ...drafts, [field.key]: rawValue }));
+                                    if (rawValue !== "") {
+                                      const value = Number(rawValue);
+                                      if (Number.isFinite(value) && value >= 0) {
+                                        setProfile({
+                                          ...profile,
+                                          useCustomTargets: true,
+                                          customTargets: { ...profile.customTargets, [field.key]: value },
+                                        });
+                                      }
+                                    }
+                                  }}
+                                  onBlur={(e) => {
+                                    const rawValue = e.currentTarget.value;
+                                    if (rawValue === "") {
+                                      setCustomTargetDrafts((drafts) => {
+                                        const next = { ...drafts };
+                                        delete next[field.key];
+                                        return next;
+                                      });
+                                      setProfile({
+                                        ...profile,
+                                        useCustomTargets: true,
+                                        customTargets: { ...profile.customTargets, [field.key]: estimatedTargets[field.key] },
+                                      });
+                                    } else {
+                                      setCustomTargetDrafts((drafts) => {
+                                        const next = { ...drafts };
+                                        delete next[field.key];
+                                        return next;
+                                      });
+                                    }
+                                  }} />
+                              </label>
+                            ))}
+                          </div>
+                          <div className="flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCustomTargetDrafts({});
+                                setProfile({
+                                  ...profile,
+                                  useCustomTargets: true,
+                                  customTargets: coreTargetFields.reduce((targets, field) => ({
+                                    ...targets,
+                                    [field.key]: estimatedTargets[field.key],
+                                  }), {} as CoreTargetOverrides),
+                                });
+                              }}
+                              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-secondary"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" /> Reset to calculated estimates
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground">Custom calorie and macro targets are unavailable for profiles under 19, pregnancy, or lactation. Micronutrient targets remain estimated from age and life stage.</p>
+                  )}
+                </div>
+                </div>
               </div>
-              <DialogFooter>
+              <DialogFooter className="shrink-0">
                 <Button onClick={() => setOpenProfile(false)}>Done</Button>
               </DialogFooter>
             </DialogContent>
-          </Dialog>
+          </Dialog>}
 
           {/* Save & Export */}
           {user && (

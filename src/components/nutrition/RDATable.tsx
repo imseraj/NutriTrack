@@ -2,13 +2,17 @@ import { useNutrition } from "@/context/NutritionContext";
 import { formatNum } from "@/lib/nutrition";
 import { motion } from "framer-motion";
 
-const ROWS: { key: string; label: string; unit: string; group: "macro" | "micro" }[] = [
+const ROWS: { key: string; label: string; unit: string; group: "macro" | "fat" | "micro" }[] = [
   { key: "calories", label: "Calories", unit: "kcal", group: "macro" },
   { key: "protein", label: "Protein", unit: "g", group: "macro" },
   { key: "carbohydrates", label: "Carbohydrates", unit: "g", group: "macro" },
   { key: "fat", label: "Fat", unit: "g", group: "macro" },
   { key: "fiber", label: "Fiber", unit: "g", group: "macro" },
   { key: "sugar", label: "Sugar", unit: "g", group: "macro" },
+  { key: "saturatedFat", label: "Saturated fat limit", unit: "g", group: "fat" },
+  { key: "monounsaturatedFat", label: "Monounsaturated fat", unit: "g", group: "fat" },
+  { key: "polyunsaturatedFat", label: "Polyunsaturated fat", unit: "g", group: "fat" },
+  { key: "omega3Ala", label: "ALA (omega-3 AI)", unit: "g", group: "fat" },
   // Fat-soluble vitamins
   { key: "vitaminA", label: "Vitamin A", unit: "µg", group: "micro" },
   { key: "vitaminD", label: "Vitamin D", unit: "µg", group: "micro" },
@@ -24,6 +28,7 @@ const ROWS: { key: string; label: string; unit: string; group: "macro" | "micro"
   { key: "vitaminB7", label: "Vitamin B7 (Biotin)", unit: "µg", group: "micro" },
   { key: "vitaminB9", label: "Vitamin B9 (Folate)", unit: "µg", group: "micro" },
   { key: "vitaminB12", label: "Vitamin B12", unit: "µg", group: "micro" },
+  { key: "choline", label: "Choline (AI)", unit: "mg", group: "micro" },
   // Major minerals
   { key: "calcium", label: "Calcium", unit: "mg", group: "micro" },
   { key: "phosphorus", label: "Phosphorus", unit: "mg", group: "micro" },
@@ -31,7 +36,6 @@ const ROWS: { key: string; label: string; unit: string; group: "macro" | "micro"
   { key: "sodium", label: "Sodium", unit: "mg", group: "micro" },
   { key: "potassium", label: "Potassium", unit: "mg", group: "micro" },
   { key: "chloride", label: "Chloride", unit: "mg", group: "micro" },
-  { key: "sulfur", label: "Sulfur", unit: "mg", group: "micro" },
   // Trace minerals
   { key: "iron", label: "Iron", unit: "mg", group: "micro" },
   { key: "zinc", label: "Zinc", unit: "mg", group: "micro" },
@@ -39,10 +43,7 @@ const ROWS: { key: string; label: string; unit: string; group: "macro" | "micro"
   { key: "selenium", label: "Selenium", unit: "µg", group: "micro" },
   { key: "copper", label: "Copper", unit: "mg", group: "micro" },
   { key: "manganese", label: "Manganese", unit: "mg", group: "micro" },
-  { key: "fluoride", label: "Fluoride", unit: "mg", group: "micro" },
-  { key: "chromium", label: "Chromium", unit: "µg", group: "micro" },
   { key: "molybdenum", label: "Molybdenum", unit: "µg", group: "micro" },
-  { key: "cobalt", label: "Cobalt", unit: "µg", group: "micro" },
 ];
 
 export function RDATable() {
@@ -52,36 +53,36 @@ export function RDATable() {
     <div className="glass-card overflow-hidden">
       <div className="p-4 border-b border-border/60 flex items-center justify-between">
         <div>
-          <h3 className="font-semibold">RDA Comparison</h3>
-          <p className="text-xs text-muted-foreground">All 36 nutrients · personalised to your profile</p>
+          <h3 className="font-semibold">Nutrients Target Comparison</h3>
+          <p className="text-xs text-muted-foreground">37 tracked nutrients · personalized targets where established</p>
         </div>
       </div>
       <div className="divide-y divide-border/40 max-h-[640px] overflow-y-auto scrollbar-thin">
         {ROWS.map((r) => {
           const value = ((totals as Record<string, number>)[r.key] as number) ?? 0;
           const target = ((rda as unknown as Record<string, number>)[r.key] as number) ?? 0;
-          const pct = target > 0 ? Math.min(100, (value / target) * 100) : 0;
+          const pct = target > 0 ? Math.min(100, (value / target) * 100) : null;
           const overflow = target > 0 && value > target;
           return (
             <div key={r.key} className="p-3 hover:bg-secondary/40 transition-colors">
               <div className="flex items-center justify-between text-sm mb-1.5">
                 <div className="flex items-center gap-2">
-                  <span className={`inline-block h-1.5 w-1.5 rounded-full ${r.group === "macro" ? "bg-primary" : "bg-accent"}`} />
+                  <span className={`inline-block h-1.5 w-1.5 rounded-full ${r.group === "macro" ? "bg-primary" : r.group === "fat" ? "bg-fat" : "bg-accent"}`} />
                   <span className="font-medium">{r.label}</span>
                 </div>
                 <div className="text-xs tabular-nums text-muted-foreground">
                   <span className="font-semibold text-foreground">{formatNum(value)}</span>
                   <span className="mx-1">/</span>
-                  <span>{formatNum(target)} {r.unit}</span>
-                  <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] font-semibold ${overflow ? "bg-destructive/15 text-destructive" : pct >= 80 ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"}`}>
-                    {Math.round(pct)}%
+                  <span>{target > 0 ? `${formatNum(target)} ${r.unit}` : "No target"}</span>
+                  <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] font-semibold ${overflow ? "bg-destructive/15 text-destructive" : pct !== null && pct >= 80 ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"}`}>
+                    {pct === null ? "—" : `${Math.round(pct)}%`}
                   </span>
                 </div>
               </div>
               <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }}
+                <motion.div initial={{ width: 0 }} animate={{ width: `${pct ?? 0}%` }}
                   transition={{ duration: 0.5, ease: "easeOut" }}
-                  className={`h-full rounded-full ${overflow ? "bg-destructive" : r.group === "macro" ? "gradient-primary" : "gradient-accent"}`} />
+                  className={`h-full rounded-full ${overflow ? "bg-destructive" : r.group === "macro" ? "gradient-primary" : r.group === "fat" ? "bg-fat" : "gradient-accent"}`} />
               </div>
             </div>
           );

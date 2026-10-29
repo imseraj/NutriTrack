@@ -26,6 +26,11 @@ const foodFormSchema = z.object({
   fat: z.coerce.number().min(0, "Cannot be negative"),
   fiber: z.coerce.number().min(0, "Cannot be negative"),
   sugar: z.coerce.number().min(0, "Cannot be negative"),
+  saturatedFat: z.preprocess(emptyToUndefined, z.coerce.number().min(0).optional()),
+  monounsaturatedFat: z.preprocess(emptyToUndefined, z.coerce.number().min(0).optional()),
+  polyunsaturatedFat: z.preprocess(emptyToUndefined, z.coerce.number().min(0).optional()),
+  omega3Ala: z.preprocess(emptyToUndefined, z.coerce.number().min(0).optional()),
+  cholesterol: z.preprocess(emptyToUndefined, z.coerce.number().min(0).optional()),
   
   publishGlobally: z.boolean().default(false),
   
@@ -42,6 +47,7 @@ const foodFormSchema = z.object({
   vitaminB7: z.preprocess(emptyToUndefined, z.coerce.number().min(0).optional()),
   vitaminB9: z.preprocess(emptyToUndefined, z.coerce.number().min(0).optional()),
   vitaminB12: z.preprocess(emptyToUndefined, z.coerce.number().min(0).optional()),
+  choline: z.preprocess(emptyToUndefined, z.coerce.number().min(0).optional()),
   
   calcium: z.preprocess(emptyToUndefined, z.coerce.number().min(0).optional()),
   iron: z.preprocess(emptyToUndefined, z.coerce.number().min(0).optional()),
@@ -114,6 +120,11 @@ export function CustomFoodForm({ onSuccess, onCancel, foodToEdit }: CustomFoodFo
         fat: foodToEdit.nutrition.macros.fat ?? 0,
         fiber: foodToEdit.nutrition.macros.fiber ?? 0,
         sugar: foodToEdit.nutrition.macros.sugar ?? 0,
+        saturatedFat: foodToEdit.nutrition.macros.saturatedFat,
+        monounsaturatedFat: foodToEdit.nutrition.macros.monounsaturatedFat,
+        polyunsaturatedFat: foodToEdit.nutrition.macros.polyunsaturatedFat,
+        omega3Ala: foodToEdit.nutrition.macros.omega3Ala,
+        cholesterol: foodToEdit.nutrition.cholesterol,
         ...micros
       });
       
@@ -144,10 +155,9 @@ export function CustomFoodForm({ onSuccess, onCancel, foodToEdit }: CustomFoodFo
     const microKeys = [
       "vitaminA", "vitaminC", "vitaminD", "vitaminE", "vitaminK",
       "vitaminB1", "vitaminB2", "vitaminB3", "vitaminB5", "vitaminB6",
-      "vitaminB7", "vitaminB9", "vitaminB12", "calcium", "iron",
+      "vitaminB7", "vitaminB9", "vitaminB12", "choline", "calcium", "iron",
       "magnesium", "potassium", "sodium", "zinc", "phosphorus",
-      "selenium", "chloride", "sulfur", "iodine", "copper",
-      "manganese", "fluoride", "chromium", "molybdenum", "cobalt"
+      "selenium", "chloride", "iodine", "copper", "manganese", "molybdenum"
     ] as const;
 
     microKeys.forEach(key => {
@@ -166,12 +176,17 @@ export function CustomFoodForm({ onSuccess, onCancel, foodToEdit }: CustomFoodFo
       servingSize: data.servingSize || `${data.baseQuantity}${data.baseUnit}`,
       nutrition: {
         calories: data.calories,
+        cholesterol: data.cholesterol ?? 0,
         macros: {
           protein: data.protein,
           carbohydrates: data.carbohydrates,
           fat: data.fat,
           fiber: data.fiber,
           sugar: data.sugar,
+          saturatedFat: data.saturatedFat ?? 0,
+          monounsaturatedFat: data.monounsaturatedFat ?? 0,
+          polyunsaturatedFat: data.polyunsaturatedFat ?? 0,
+          omega3Ala: data.omega3Ala ?? 0,
         },
         micros,
       },
@@ -413,6 +428,44 @@ export function CustomFoodForm({ onSuccess, onCancel, foodToEdit }: CustomFoodFo
         </div>
       </div>
 
+      <div className="space-y-3">
+        <h5 className="text-xs font-bold text-accent uppercase tracking-wider">Fat profile (per base quantity)</h5>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+          {[
+            { id: "saturatedFat", label: "Saturated fat (g)" },
+            { id: "monounsaturatedFat", label: "Monounsaturated (g)" },
+            { id: "polyunsaturatedFat", label: "Polyunsaturated (g)" },
+            { id: "omega3Ala", label: "ALA omega-3 (g)" },
+            { id: "cholesterol", label: "Cholesterol (mg, info)" },
+          ].map((field) => (
+            <div key={field.id} className="space-y-1">
+              <Label htmlFor={`inline-${field.id}`} className="text-[11px] text-muted-foreground">{field.label}</Label>
+              <Input id={`inline-${field.id}`} type="number" step="any" {...register(field.id as keyof FoodFormValues)} placeholder="0" className="h-9 rounded-lg" />
+              <ErrorMsg field={field.id as keyof FoodFormValues} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <h5 className="text-xs font-bold text-accent uppercase tracking-wider">Fat profile (per base quantity)</h5>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+          {[
+            { id: "saturatedFat", label: "Saturated fat (g)" },
+            { id: "monounsaturatedFat", label: "Monounsaturated (g)" },
+            { id: "polyunsaturatedFat", label: "Polyunsaturated (g)" },
+            { id: "omega3Ala", label: "ALA omega-3 (g)" },
+            { id: "cholesterol", label: "Cholesterol (mg, info)" },
+          ].map((field) => (
+            <div key={field.id} className="space-y-1">
+              <Label htmlFor={`inline-${field.id}`} className="text-[11px] text-muted-foreground">{field.label}</Label>
+              <Input id={`inline-${field.id}`} type="number" step="any" {...register(field.id as keyof FoodFormValues)} placeholder="0" className="h-9 rounded-lg" />
+              <ErrorMsg field={field.id as keyof FoodFormValues} />
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Section 3: Micronutrients Accordion */}
       <div className="rounded-2xl border border-border overflow-hidden">
         <button
@@ -443,6 +496,7 @@ export function CustomFoodForm({ onSuccess, onCancel, foodToEdit }: CustomFoodFo
                   { id: "vitaminB7", label: "B7 - Biotin (μg)" },
                   { id: "vitaminB9", label: "B9 - Folate (μg DFE)" },
                   { id: "vitaminB12", label: "B12 (μg)" },
+                  { id: "choline", label: "Choline (mg)" },
                 ].map((v) => (
                   <div key={v.id} className="space-y-1">
                     <Label htmlFor={v.id} className="text-[11px] text-muted-foreground">{v.label}</Label>
@@ -466,14 +520,10 @@ export function CustomFoodForm({ onSuccess, onCancel, foodToEdit }: CustomFoodFo
                   { id: "phosphorus", label: "Phosphorus (mg)" },
                   { id: "selenium", label: "Selenium (μg)" },
                   { id: "chloride", label: "Chloride (mg)" },
-                  { id: "sulfur", label: "Sulfur (mg)" },
                   { id: "iodine", label: "Iodine (μg)" },
                   { id: "copper", label: "Copper (mg)" },
                   { id: "manganese", label: "Manganese (mg)" },
-                  { id: "fluoride", label: "Fluoride (mg)" },
-                  { id: "chromium", label: "Chromium (μg)" },
                   { id: "molybdenum", label: "Molybdenum (μg)" },
-                  { id: "cobalt", label: "Cobalt (μg)" },
                 ].map((m) => (
                   <div key={m.id} className="space-y-1">
                     <Label htmlFor={m.id} className="text-[11px] text-muted-foreground">{m.label}</Label>

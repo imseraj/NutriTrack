@@ -27,6 +27,7 @@ if (isFirebaseConfigured) {
     app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
     auth = getAuth(app);
     db = initializeFirestore(app, {
+      ignoreUndefinedProperties: true,
       localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager(),
       }),
@@ -36,8 +37,8 @@ if (isFirebaseConfigured) {
   }
 } else {
   console.warn(
-    "Firebase is not configured. The application is running in local-only offline mode (localStorage). " +
-    "To enable user login and cloud database features, please configure your .env file with VITE_FIREBASE_* environment variables."
+    "Firebase is not configured. Sign-in, cloud data, and food search are unavailable. " +
+    "Configure your .env file with VITE_FIREBASE_* environment variables."
   );
 }
 

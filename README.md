@@ -33,13 +33,13 @@
   - [Environment Variables](#environment-variables)
   - [Running the Dev Server](#running-the-dev-server)
   - [Building for Production](#building-for-production)
+- [USDA FoodData Central](#usda-fooddata-central)
 - [Firebase Setup](#firebase-setup)
   - [Firestore Data Model](#firestore-data-model)
   - [Security Rules](#security-rules)
   - [Admin System](#admin-system)
 - [Nutrition Science & RDA Engine](#nutrition-science--rda-engine)
 - [Authentication](#authentication)
-- [Offline / Guest Mode](#offline--guest-mode)
 - [Testing](#testing)
 - [Scripts](#scripts)
 - [Contributing](#contributing)
@@ -49,25 +49,25 @@
 
 ## Overview
 
-**NutriTrack** is a full-featured nutrition tracking single-page application designed for individuals who want precise control over their dietary intake. Unlike simplified calorie counters, NutriTrack tracks **36 nutrients** (6 macronutrients + 30 micronutrients) and provides **personalized RDA targets** dynamically computed from your biometric profile using clinically-referenced formulas (Mifflin-St Jeor for adults, Schofield for children, with NIH DRI adjustments for age, gender, pregnancy, and lactation).
+**NutriTrack** is a full-featured nutrition tracking single-page application designed for individuals who want precise control over their dietary intake. It tracks **37 nutrient values** across core macros, fat profile, vitamins, minerals, and choline, with profile-based dietary reference targets where established.
 
-The app works in two modes:
-1. **Cloud mode** — Firebase Authentication + Firestore real-time sync across devices.
-2. **Guest / Offline mode** — All data persisted locally in `localStorage` with no account required.
+An account is required. Firebase Authentication protects nutrition data in Firestore, and USDA FoodData Central is searched on demand through an authenticated Cloudflare Worker. The full USDA catalog is not copied into Firestore.
 
 ---
 
 ## Key Features
 
 ### 🍽️ Food Logging & Search
-- **Unified search bar** — search across the global foods database, your personal custom foods, and your saved meals simultaneously.
-- **Category browsing** — browse foods by category (Protein, Fruit, Vegetable, Grain, Dairy, Nut, Fat, Beverage, Custom Foods) with visual food cards.
+- **Unified search bar** — search SR Legacy foods first, alongside your personal foods, admin-curated foods, and saved meals.
+- **USDA alternatives on demand** — search Foundation, Survey (FNDDS), and Branded foods only when you choose the alternate-source action.
+- **Paged search results** — load another page at the bottom of the results instead of fetching the full USDA catalog.
+- **On-demand food data** — FDC results are fetched as needed instead of importing thousands of food records into Firestore.
 - **Debounced auto-suggest** with keyboard navigation (↑/↓/Enter/Escape).
 - **Recent foods** — automatically tracks your last 8 used foods for quick re-add.
 - **Duplicate prevention** — prevents adding the same food item twice with a friendly toast notification.
 
 ### 📊 Comprehensive Nutrition Table
-- Displays **all 36 tracked nutrients** in a split-pane table with synchronized scrolling.
+- Displays **37 tracked nutrient values** in a split-pane table with synchronized scrolling, plus cholesterol as an informational value.
 - **Left pane** (fixed): Food name, quantity controls (±/slider/input), unit selector, and 6 macro columns (Cal, Protein, Carbs, Fat, Fiber, Sugar).
 - **Right pane** (scrollable): 30 micronutrient columns covering all fat-soluble vitamins (A, D, E, K), water-soluble vitamins (C, B1–B12), macrominerals (Ca, P, Mg, Na, K, Cl, S), and trace minerals (Fe, Zn, I, Se, Cu, Mn, F, Cr, Mo, Co).
 - **Footer rows**: Total consumed, RDA target, and % Completed with color-coded indicators.
@@ -75,9 +75,9 @@ The app works in two modes:
 - **Responsive layout** — collapses macros into the scrollable pane on mobile breakpoints.
 
 ### 🎯 Dynamic RDA Computation
-- Personalised calorie targets using **Mifflin-St Jeor** (adults) and **Schofield** (children <18) equations.
+- Estimated energy targets using **2023 National Academies EER equations**, with age-, sex-, activity-, and life-stage-specific models.
 - Macro distribution follows **AMDR percentages** adjusted for goal (maintain, lose, gain, muscle_gain).
-- **23 nutrients with official NIH RDA**, **9 with Adequate Intake (AI)**, and **4 with estimated/reference values**.
+- Reference targets use RDAs, AIs, and limits where established; mono/polyunsaturated fat and cholesterol are informational.
 - Dynamic adjustments for: age, gender, activity level, pregnancy, and lactation.
 - Safety floor: 1500 kcal (male), 1200 kcal (female).
 
@@ -98,7 +98,7 @@ The app works in two modes:
 - **Macro Breakdown** — donut/pie chart showing calorie contribution from protein, carbs, and fat.
 - **Weekly Calorie Trend** — bar chart of daily logged calories with inline edit dialog to correct past entries.
 - **Micronutrient Coverage** — bar chart showing % of RDA for 15 key vitamins & minerals with color thresholds.
-- **RDA Comparison Table** — scrollable list of all 36 nutrients with animated progress bars.
+- **Reference Target Comparison** — scrollable list of tracked nutrients with RDA/AI/limit indicators where targets exist.
 
 ### 🍱 Saved Meals
 - Save your current plate as a named meal (e.g., "Recovery Breakfast").
@@ -108,12 +108,12 @@ The app works in two modes:
 - Delete meals with confirmation.
 
 ### 🧪 Custom Food Creator
-- Full-form builder for registering new foods with: name, emoji, category, base quantity, base unit, serving size, all 6 macros, and all 30 micronutrients.
+- Full-form builder for registering new foods with: name, serving size, core macros, fat profile, cholesterol, vitamins, minerals, and choline.
 - Edit existing custom foods inline.
 - **Admin-only global food management** — admins can create, edit, and delete foods from the centralized global database that all users see.
 
 ### 📄 PDF Export
-- Generate **A3 landscape PDF reports** with all 36 nutrient columns.
+- Generate **A3 landscape PDF reports** with tracked nutrients and cholesterol.
 - Includes: profile summary, individual food rows, totals, RDA targets, and % completion.
 - Green-branded header with timestamp.
 
@@ -143,9 +143,9 @@ The app works in two modes:
 | **Build Tool** | [Vite 5](https://vitejs.dev) + [SWC](https://swc.rs) (via `@vitejs/plugin-react-swc`) |
 | **Styling**    | [Tailwind CSS 3.4](https://tailwindcss.com) + custom CSS variables + `tailwindcss-animate` |
 | **UI Library** | [shadcn/ui](https://ui.shadcn.com) (Radix UI primitives + CVA)            |
-| **State**      | React Context (`NutritionContext`) + `localStorage` / Firestore            |
+| **State**      | React Context (`NutritionContext`) + Firestore                              |
 | **Routing**    | [React Router DOM 6](https://reactrouter.com)                              |
-| **Backend**    | [Firebase 12](https://firebase.google.com) (Auth + Firestore with offline persistence) |
+| **Backend**    | [Firebase](https://firebase.google.com) (Auth + Firestore) + [Cloudflare Workers](https://workers.cloudflare.com) (USDA API proxy) |
 | **Charts**     | [Recharts 2](https://recharts.org) (BarChart, PieChart)                    |
 | **Animations** | [Framer Motion 12](https://www.framer.com/motion/)                         |
 | **Forms**      | [React Hook Form](https://react-hook-form.com) + [Zod](https://zod.dev) validation |
@@ -169,7 +169,7 @@ The app works in two modes:
 │  │             │    │  │Search│ │FoodTbl│ │NutrSummary │   │ │
 │  │ Email/Pass  │    │  └──────┘ └───────┘ └────────────┘   │ │
 │  │ Google OAuth│    │  ┌──────┐ ┌───────┐ ┌────────────┐   │ │
-│  │ Guest Mode  │    │  │Charts│ │Water  │ │ Insights   │   │ │
+│  │  Sign In    │    │  │Charts│ │Water  │ │ Insights   │   │ │
 │  └──────┬──────┘    │  └──────┘ └───────┘ └────────────┘   │ │
 │         │           │  ┌──────────┐ ┌─────────────────┐    │ │
 │         │           │  │SavedMeals│ │ CustomFoodForm  │    │ │
@@ -189,14 +189,14 @@ The app works in two modes:
 │            ┌───────────┴───────────┐                         │
 │            ▼                       ▼                         │
 │   ┌────────────────┐    ┌──────────────────┐                 │
-│   │  localStorage  │    │    Firebase      │                 │
-│   │  (Guest Mode)  │    │  Auth + Firestore│                 │
-│   │  nutritrack:v1 │    │  Real-time sync  │                 │
+│   │ USDA FoodData  │    │    Firebase      │                 │
+│   │ Central API    │    │ Auth + Firestore │                 │
+│   │ via Worker     │    │  User data sync  │                 │
 │   └────────────────┘    └──────────────────┘                 │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-**Data flow**: All state mutations go through `NutritionContext`. If a Firebase user is logged in, changes are written to Firestore with optimistic UI updates and rollback on failure. If in guest mode, data is persisted to `localStorage` under the `nutritrack:v1` namespace. Real-time Firestore `onSnapshot` listeners keep the UI in sync across tabs/devices.
+**Data flow**: All state mutations go through `NutritionContext` and are stored in the signed-in user's Firestore records. Search requests go to a Cloudflare Worker, which verifies the Firebase ID token, calls FoodData Central with a server-side API key, and returns matching foods. USDA food records are not bulk-stored in Firestore.
 
 ---
 
@@ -223,17 +223,18 @@ glow-nutrition-hub-main/
 │   ├── context/
 │   │   └── NutritionContext.tsx      # ⭐ Central state provider (763 lines)
 │   │                                 #   Profile, plate, meals, history, water,
-│   │                                 #   auth, admin, Firebase sync, localStorage
+│   │                                 #   auth, admin, Firebase sync, theme
 │   │
 │   ├── data/
 │   │   └── foods.ts                 # Food type definitions, RDA_DEFAULT constants,
 │   │                                #   UserProfile interface, computeRDA() engine
 │   │
 │   ├── lib/
-│   │   ├── firebase.ts              # Firebase init (Auth + Firestore w/ offline cache)
+│   │   ├── firebase.ts              # Firebase init (Auth + Firestore + Functions)
+│   │   ├── foodDataCentral.ts       # FDC result mapping and callable search client
 │   │   ├── nutrition.ts             # Nutrition math (quantityFactor, calcNutrition,
 │   │   │                            #   sumNutrition, MICRO_KEYS, formatNum)
-│   │   ├── pdf.ts                   # PDF report generation (A3, 36 columns)
+│   │   ├── pdf.ts                   # PDF report generation (A3, full nutrient profile)
 │   │   └── utils.ts                 # Tailwind cn() merge utility
 │   │
 │   ├── hooks/
@@ -245,7 +246,7 @@ glow-nutrition-hub-main/
 │   │   │                            #   DailyEnergyTile, MacrosTile, ItemsTile,
 │   │   │                            #   MealsCountTile, SavedMealsTab, CustomFoodsTab,
 │   │   │                            #   footer (Privacy, Terms, Contact dialogs)
-│   │   ├── Login.tsx                # Full-page auth screen (Google + Email + Guest)
+│   │   ├── Login.tsx                # Full-page auth screen (Google + Email)
 │   │   └── NotFound.tsx             # 404 page
 │   │
 │   ├── components/
@@ -257,16 +258,16 @@ glow-nutrition-hub-main/
 │   │   ├── nutrition/
 │   │   │   ├── Header.tsx           # App header (branding, profile dialog, save & export, theme toggle, user menu)
 │   │   │   ├── FoodSearch.tsx       # Search bar + auto-suggest + category chips + food shelf
-│   │   │   ├── FoodTable.tsx        # ⭐ Split-pane nutrition table (620 lines, 36 columns)
+│   │   │   ├── FoodTable.tsx        # ⭐ Split-pane nutrition table
 │   │   │   ├── NutritionSummary.tsx # Sticky sidebar summary (pie chart + macro bars + calorie progress)
-│   │   │   ├── RDATable.tsx         # Full 36-nutrient RDA comparison with animated progress bars
+│   │   │   ├── RDATable.tsx         # Dietary reference target comparison
 │   │   │   ├── Charts.tsx           # MicroBarChart, MacroPie, HistoryChart, StatCards
 │   │   │   ├── WaterTracker.tsx     # SVG water glass with wave animation
 │   │   │   ├── InsightsPanel.tsx    # Rule-based nutrition coaching engine
 │   │   │   ├── ProfileCard.tsx      # Inline profile editor card
 │   │   │   ├── SavedMeals.tsx       # Save/Load/Export/Log meal panel
 │   │   │   ├── CustomFoodDialog.tsx # Dialog wrapper for custom food form
-│   │   │   └── CustomFoodForm.tsx   # Full food registration form (name, emoji, macros, 30 micros)
+│   │   │   └── CustomFoodForm.tsx   # Full food registration form (macros, fat profile, vitamins, minerals)
 │   │   │
 │   │   └── ui/                      # 49 shadcn/ui primitives (accordion, button, card, chart,
 │   │                                #   dialog, dropdown, form, input, select, slider, tabs,
@@ -301,7 +302,9 @@ glow-nutrition-hub-main/
 
 - **Node.js** ≥ 18
 - **npm** (or **bun** — the project includes a `bun.lockb`)
-- A **Firebase project** (optional — the app works fully offline without it)
+- A **Firebase project** with Authentication and Firestore enabled
+- A **Cloudflare account** for the free Workers proxy
+- A **USDA FoodData Central API key** from https://fdc.nal.usda.gov/api-key-signup
 
 ### Installation
 
@@ -336,7 +339,7 @@ VITE_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
 VITE_FIREBASE_APP_ID=your_app_id
 ```
 
-> **Note**: If you leave these blank or omit the `.env` file entirely, the app will run in **offline-only guest mode** using `localStorage`. No login functionality will be available, but all tracking features work locally.
+An authenticated Firebase account is required to use the dashboard. The public Worker URL is configured as `VITE_FDC_API_URL`; the USDA API key is stored as a Cloudflare Worker secret and must not be added to `.env` or any `VITE_*` variable.
 
 ### Running the Dev Server
 
@@ -360,13 +363,35 @@ npm run preview
 
 ---
 
+## USDA FoodData Central
+
+Food search calls USDA FDC through a Cloudflare Worker. The Worker verifies the user's Firebase ID token and reads the API key from Cloudflare Secrets. This keeps the key out of the browser and does not require Firebase Blaze or Firebase Cloud Functions.
+
+Install and deploy the Worker from its directory:
+
+```bash
+cd workers/fdc-api
+npm install
+npx wrangler login
+npx wrangler secret put FDC_API_KEY
+npx wrangler deploy
+```
+
+For local development, copy `workers/fdc-api/.dev.vars.example` to `workers/fdc-api/.dev.vars` and put your key in that ignored local file. Start the Worker with `npx wrangler dev` and set `VITE_FDC_API_URL=http://127.0.0.1:8787` in the app's `.env`. For production, set `VITE_FDC_API_URL` to the `workers.dev` URL printed by deploy and rebuild the frontend.
+
+The Worker allows local Vite origins and the default Firebase Hosting domains. Add a custom production origin to `ALLOWED_ORIGINS` in `workers/fdc-api/wrangler.jsonc`. Searches default to SR Legacy and return 12 foods per page; users can explicitly search the other supported data types, and more results are loaded on demand. Search results are not written to Firestore. USDA nutrient values are mapped into the app's per-100 g or package-serving model. USDA FoodData Central data is public domain; attribution is requested by USDA.
+
+The callable allows the local Vite origins and the default `nutritrack.web.app` / `nutritrack.firebaseapp.com` origins. Add any custom production origin to `allowedOrigins` in `functions/index.js`, then redeploy the function.
+
+---
+
 ## Firebase Setup
 
 ### Firestore Data Model
 
 ```
 firestore/
-├── global_foods/                    # Global food database (admin-managed)
+├── global_foods/                    # Optional small admin-curated catalog (not the USDA dataset)
 │   └── {foodId}                     # Food document (name, emoji, category, nutrition...)
 │
 ├── admins/                          # Admin registry (read-only by user, write via console)
@@ -408,7 +433,7 @@ Admin status is checked via two mechanisms (in priority order):
 2. **Firestore `admins` collection** — document with the user's UID exists.
 
 Admins can:
-- Add, edit, and delete foods from the **global foods database**.
+- Add, edit, and delete foods from the optional **admin-curated catalog**.
 - Toggle between "Personal" and "Global" views in the Custom Foods tab.
 
 To make a user an admin, either:
@@ -419,16 +444,19 @@ To make a user an admin, either:
 
 ## Nutrition Science & RDA Engine
 
-NutriTrack's RDA engine (`computeRDA()` in `src/data/foods.ts`) uses clinically-referenced formulas:
+NutriTrack's target engine (`computeRDA()` in `src/data/foods.ts`) uses published dietary reference values and the **2023 National Academies Estimated Energy Requirement (EER)** equations. Energy estimates are not BMI targets or medical advice.
 
-### Calorie Calculation
+### Energy Estimate
 
-| Age Group | Formula |
+| Age / life stage | Estimate |
 |---|---|
-| Adults (≥ 18) | **Mifflin-St Jeor**: `10×weight + 6.25×height − 5×age + gender_offset` |
-| Children (< 18) | **Schofield equations** by age/gender bracket |
+| Infants and toddlers (< 3) | Sex-specific EER equations plus age-specific growth energy |
+| Children and adolescents (3–18) | Sex-, age-, height-, weight-, and activity-category EER equations plus growth energy |
+| Adults (19+) | Sex-, age-, height-, weight-, and activity-category EER equations |
+| Pregnancy | First trimester uses the non-pregnant estimate. Second/third trimester estimate requires gestational week and pre-pregnancy weight. |
+| Lactation | Uses the non-pregnant EER plus a selected early or later postpartum allowance. |
 
-Multiplied by activity factor (1.2–1.9) with goal adjustments:
+Activity level selects an EER activity category. Adult-only goal adjustments are applied to maintenance estimates:
 
 | Goal | Adjustment |
 |---|---|
@@ -436,10 +464,9 @@ Multiplied by activity factor (1.2–1.9) with goal adjustments:
 | Lose weight | −500 kcal |
 | Gain weight | +500 kcal |
 | Build muscle | +300 kcal |
-| Pregnant | +300 kcal |
-| Lactating | +500 kcal |
+Pregnancy and lactation have separate life-stage handling; adult weight-loss/gain adjustments are not applied to children or these life stages. Users can optionally override calories, protein, carbohydrates, fat, fiber, and total-sugar targets for eligible adult profiles. Micronutrient targets remain profile-based.
 
-### Macro Distribution (AMDR-based)
+### Macro Distribution
 
 | Goal | Protein | Fat | Carbs |
 |---|---|---|---|
@@ -450,15 +477,17 @@ Multiplied by activity factor (1.2–1.9) with goal adjustments:
 
 Fiber calculated as **14g per 1000 kcal**.
 
-### Tracked Nutrients (36 total)
+### Tracked Nutrients (37 total; cholesterol shown separately)
 
 | Category | Nutrients |
 |---|---|
-| **Macros** (6) | Calories, Protein, Carbohydrates, Fat, Fiber, Sugar |
-| **Fat-soluble vitamins** (4) | A, D, E, K |
-| **Water-soluble vitamins** (9) | C, B1, B2, B3, B5, B6, B7, B9, B12 |
-| **Macrominerals** (7) | Calcium, Phosphorus, Magnesium, Sodium, Potassium, Chloride, Sulfur |
-| **Trace minerals** (10) | Iron, Zinc, Iodine, Selenium, Copper, Manganese, Fluoride, Chromium, Molybdenum, Cobalt |
+| **Core macros** (6) | Calories, Protein, Carbohydrates, Total Fat, Fiber, Total Sugar |
+| **Fat profile** (4) | Saturated Fat, Monounsaturated Fat, Polyunsaturated Fat, ALA (Omega-3) |
+| **Vitamins** (13) | A, D, E, K, C, B1, B2, B3, B5, B6, B7, B9, B12 |
+| **Minerals and electrolytes** (13) | Calcium, Phosphorus, Magnesium, Sodium, Potassium, Chloride, Iron, Zinc, Iodine, Selenium, Copper, Manganese, Molybdenum |
+| **Other essential nutrient** (1) | Choline |
+
+Dietary cholesterol is shown as an informational amount without a daily target. Saturated fat uses a calorie-based limit, ALA and choline use Adequate Intake targets, and mono/polyunsaturated fats have no percentage goal.
 
 ---
 
@@ -469,7 +498,7 @@ Fiber calculated as **14g per 1000 kcal**.
 | **Email/Password** | Firebase `createUserWithEmailAndPassword` / `signInWithEmailAndPassword` |
 | **Google OAuth** | `signInWithPopup` with `GoogleAuthProvider` |
 | **Password Reset** | `sendPasswordResetEmail` |
-| **Guest Mode** | No account required — `sessionStorage` flag + `localStorage` persistence |
+| **Dashboard access** | Sign-in required; user nutrition data is stored in Firestore |
 
 ### Rate Limiting
 
@@ -477,22 +506,6 @@ Client-side brute-force protection:
 - After **5 failed login attempts**, the account is locked out for **60 seconds**.
 - Counters tracked in `localStorage` (`nutritrack:login:failed_attempts`, `nutritrack:login:lockout_until`).
 - Successful login resets all counters.
-
----
-
-## Offline / Guest Mode
-
-When Firebase is not configured or the user selects "Continue as Guest":
-
-- All state (profile, plate, meals, history, custom foods, water, theme) is persisted in `localStorage` under the `nutritrack:v1` namespace.
-- The global foods database is loaded from the last-synced localStorage cache.
-- No authentication UI is shown when Firebase is completely unconfigured.
-- Guest history retains the most recent 14 daily entries.
-
-When a user later signs in:
-- Firestore becomes the source of truth via real-time `onSnapshot` listeners.
-- `localStorage` writes are disabled for the authenticated user.
-- Signing out reloads guest data from `localStorage`.
 
 ---
 

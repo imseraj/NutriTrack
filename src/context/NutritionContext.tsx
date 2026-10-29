@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
 import { toast } from "@/hooks/use-toast";
-import { Food, Unit, RDA, computeRDA, RDA_DEFAULT } from "@/data/foods";
+import { applyCoreTargetOverrides, CoreTargetOverrides, Food, FoodPortion, Unit, RDA, computeRDA, RDA_DEFAULT } from "@/data/foods";
 import { SelectedFood, sumNutrition, emptyTotals } from "@/lib/nutrition";
 import { auth as fbAuth, db as fbDb, isFirebaseConfigured } from "@/lib/firebase";
 import {
@@ -34,6 +34,11 @@ interface Profile {
   goal: "maintain" | "lose" | "gain" | "muscle_gain";
   isPregnant?: boolean;
   isLactating?: boolean;
+  gestationalWeeks?: number;
+  prepregnancyWeight?: number;
+  lactationStage?: "firstSixMonths" | "sevenToTwelveMonths";
+  useCustomTargets?: boolean;
+  customTargets?: CoreTargetOverrides;
 }
 
 export interface SavedMeal {
@@ -52,7 +57,7 @@ interface DailyEntry {
 interface Ctx {
   selected: SelectedFood[];
   addFood: (food: Food) => void;
-  updateItem: (uid: string, patch: Partial<Pick<SelectedFood, "quantity" | "unit">>) => void;
+  updateItem: (uid: string, patch: Partial<Pick<SelectedFood, "quantity" | "unit" | "portion">>) => void;
   removeItem: (uid: string) => void;
   clearAll: () => void;
   totals: ReturnType<typeof sumNutrition>;
@@ -130,23 +135,21 @@ function save(k: string, v: unknown) {
 
 export function NutritionProvider({ children }: { children: ReactNode }) {
   // Local states
-  const [selected, setSelected] = useState<SelectedFood[]>(() => load("selected", []));
-  const [profile, setProfileState] = useState<Profile>(() =>
-    load("profile", { name: "", age: 28, gender: "male", weight: 70, height: 175, activityLevel: 1.375, goal: "maintain" })
-  );
-  const [savedMeals, setSavedMeals] = useState<SavedMeal[]>(() => load("meals", []));
-  const [recentFoods, setRecentFoods] = useState<Food[]>(() => load("recent", []));
-  const [recentQuantities, setRecentQuantities] = useState<number[]>(() => load("recentQty", [50, 100, 150, 200]));
-  const [history, setHistory] = useState<DailyEntry[]>(() => load("history", []));
+  const [selected, setSelected] = useState<SelectedFood[]>([]);
+  const [profile, setProfileState] = useState<Profile>({ name: "", age: 28, gender: "male", weight: 70, height: 175, activityLevel: 1.375, goal: "maintain" });
+  const [savedMeals, setSavedMeals] = useState<SavedMeal[]>([]);
+  const [recentFoods, setRecentFoods] = useState<Food[]>([]);
+  const [recentQuantities, setRecentQuantities] = useState<number[]>([50, 100, 150, 200]);
+  const [history, setHistory] = useState<DailyEntry[]>([]);
   const [theme, setTheme] = useState<"light" | "dark">(() => load("theme", "light"));
-  const [customFoods, setCustomFoods] = useState<Food[]>(() => load("customFoods", []));
-  const [waterIntake, setWaterIntake] = useState<number>(() => load("waterIntake", 0));
-  const [waterGoal, setWaterGoalState] = useState<number>(() => load("waterGoal", 2000));
+  const [customFoods, setCustomFoods] = useState<Food[]>([]);
+  const [waterIntake, setWaterIntake] = useState<number>(0);
+  const [waterGoal, setWaterGoalState] = useState<number>(2000);
 
   // Firebase auth & global foods states
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const [globalFoods, setGlobalFoods] = useState<Food[]>(() => load("globalFoods", []));
+  const [globalFoods, setGlobalFoods] = useState<Food[]>([]);
 
   // Profile modal control state
   const [openProfile, setOpenProfile] = useState(false);
@@ -161,17 +164,6 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
       await setDoc(userRef, patch, { merge: true });
     }
   };
-
-  // Local storage synchronization (only for guest mode/when logged out)
-  useEffect(() => { if (!user) save("selected", selected); }, [selected, user]);
-  useEffect(() => { if (!user) save("profile", profile); }, [profile, user]);
-  useEffect(() => { if (!user) save("meals", savedMeals); }, [savedMeals, user]);
-  useEffect(() => { if (!user) save("recent", recentFoods); }, [recentFoods, user]);
-  useEffect(() => { if (!user) save("recentQty", recentQuantities); }, [recentQuantities, user]);
-  useEffect(() => { if (!user) save("history", history); }, [history, user]);
-  useEffect(() => { if (!user) save("customFoods", customFoods); }, [customFoods, user]);
-  useEffect(() => { if (!user) save("waterIntake", waterIntake); }, [waterIntake, user]);
-  useEffect(() => { if (!user) save("waterGoal", waterGoal); }, [waterGoal, user]);
 
   useEffect(() => {
     save("theme", theme);
@@ -234,16 +226,15 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
         }
       } else {
         setIsAdmin(false);
-        // Clear session specific states and reload guest data from local storage
-        setSelected(load("selected", []));
-        setProfileState(load("profile", { age: 28, gender: "male", weight: 70, height: 175, activityLevel: 1.375, goal: "maintain" }));
-        setSavedMeals(load("meals", []));
-        setRecentFoods(load("recent", []));
-        setRecentQuantities(load("recentQty", [50, 100, 150, 200]));
-        setHistory(load("history", []));
-        setCustomFoods(load("customFoods", []));
-        setWaterIntake(load("waterIntake", 0));
-        setWaterGoalState(load("waterGoal", 2000));
+        setSelected([]);
+        setProfileState({ name: "", age: 28, gender: "male", weight: 70, height: 175, activityLevel: 1.375, goal: "maintain" });
+        setSavedMeals([]);
+        setRecentFoods([]);
+        setRecentQuantities([50, 100, 150, 200]);
+        setHistory([]);
+        setCustomFoods([]);
+        setWaterIntake(0);
+        setWaterGoalState(2000);
         setLoading(false);
       }
     });
@@ -304,12 +295,9 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
     };
   }, [user]);
 
-  // Load global foods from Firebase (single source of truth)
-  // Cached in localStorage so offline users see last-synced verified data
+  // Load admin-curated foods; USDA foods are searched on demand through the Worker.
   useEffect(() => {
     if (!isFirebaseConfigured || !fbDb) {
-      // Offline/no Firebase — use cached data from last sync
-      setGlobalFoods(load("globalFoods", []));
       return;
     }
 
@@ -318,8 +306,6 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
       const list: Food[] = [];
       snapshot.forEach((doc) => list.push(doc.data() as Food));
       setGlobalFoods(list);
-      // Cache to localStorage for offline access
-      save("globalFoods", list);
     });
 
     return unsubscribe;
@@ -399,7 +385,13 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
   };
 
   const totals = useMemo(() => sumNutrition(selected), [selected]);
-  const rda = useMemo(() => computeRDA(profile) ?? RDA_DEFAULT, [profile]);
+  const rda = useMemo(() => {
+    const estimated = computeRDA(profile) ?? RDA_DEFAULT;
+    const supportsCustomTargets = profile.age >= 19 && !profile.isPregnant && !profile.isLactating;
+    return profile.useCustomTargets && supportsCustomTargets
+      ? applyCoreTargetOverrides(estimated, profile.customTargets)
+      : estimated;
+  }, [profile]);
 
   // Auth Operations
   const signIn = async (email: string, pass: string) => {
@@ -499,7 +491,7 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
     const newItem: SelectedFood = {
       uid: `${food.id}-${Date.now()}`,
       food,
-      quantity: food.baseUnit === "pieces" ? 1 : 100,
+      quantity: food.baseUnit === "pieces" ? 1 : food.baseQuantity,
       unit: food.baseUnit,
     };
     const newSelected = [...selected, newItem];
@@ -519,7 +511,12 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
   };
 
   const updateItem: Ctx["updateItem"] = async (uid, patch) => {
-    const newSelected = selected.map((it) => (it.uid === uid ? { ...it, ...patch } : it));
+    const newSelected = selected.map((it) => {
+      if (it.uid !== uid) return it;
+      const updated = { ...it, ...patch };
+      if (patch.unit && patch.unit !== "portion") delete updated.portion;
+      return updated;
+    });
     let nextQty = recentQuantities;
     if (patch.quantity && Number.isFinite(patch.quantity)) {
       nextQty = Array.from(new Set([patch.quantity!, ...recentQuantities])).slice(0, 6);
@@ -779,11 +776,15 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
 
   const setProfile = async (p: Profile) => {
     const prevProfile = profile;
-    setProfileState(p);
+    const nextProfile = { ...p };
+    if (nextProfile.age < 19 || nextProfile.isPregnant || nextProfile.isLactating) {
+      nextProfile.useCustomTargets = false;
+    }
+    setProfileState(nextProfile);
 
     if (user && fbDb) {
       try {
-        await updateFirebaseSettings({ profile: p });
+        await updateFirebaseSettings({ profile: nextProfile });
       } catch (err) {
         setProfileState(prevProfile);
         console.error("Failed to sync profile with Firebase:", err);

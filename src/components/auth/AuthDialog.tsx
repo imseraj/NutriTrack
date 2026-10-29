@@ -142,9 +142,9 @@ export function AuthDialog({ trigger, open, onOpenChange }: AuthDialogProps) {
         {!isFirebaseConfigured ? (
           <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-4 flex flex-col gap-2 mt-2 items-center text-center">
             <ShieldAlert className="h-8 w-8 text-destructive animate-pulse" />
-            <h4 className="font-semibold text-sm text-destructive">Firebase Offline Mode</h4>
+            <h4 className="font-semibold text-sm text-destructive">Firebase Not Configured</h4>
             <p className="text-xs text-muted-foreground leading-normal">
-              Authentication and database persistence are currently unavailable. Setup your Firebase keys in your <code>.env</code> file.
+              Sign-in and cloud features are unavailable. Configure Firebase in your <code>.env</code> file to continue.
             </p>
           </div>
         ) : (

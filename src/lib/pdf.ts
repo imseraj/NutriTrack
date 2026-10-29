@@ -24,23 +24,20 @@ const MICRO_COLS: { key: typeof MICRO_KEYS[number]; label: string; unit: string 
   { key: "vitaminB7", label: "B7", unit: "μg" },
   { key: "vitaminB9", label: "B9", unit: "μg" },
   { key: "vitaminB12", label: "B12", unit: "μg" },
+  { key: "choline", label: "Choline", unit: "mg" },
   { key: "calcium", label: "Ca", unit: "mg" },
   { key: "phosphorus", label: "P", unit: "mg" },
   { key: "magnesium", label: "Mg", unit: "mg" },
   { key: "sodium", label: "Na", unit: "mg" },
   { key: "potassium", label: "K", unit: "mg" },
   { key: "chloride", label: "Cl", unit: "mg" },
-  { key: "sulfur", label: "S", unit: "mg" },
   { key: "iron", label: "Fe", unit: "mg" },
   { key: "zinc", label: "Zn", unit: "mg" },
   { key: "iodine", label: "I", unit: "μg" },
   { key: "selenium", label: "Se", unit: "μg" },
   { key: "copper", label: "Cu", unit: "mg" },
   { key: "manganese", label: "Mn", unit: "mg" },
-  { key: "fluoride", label: "F", unit: "mg" },
-  { key: "chromium", label: "Cr", unit: "μg" },
   { key: "molybdenum", label: "Mo", unit: "μg" },
-  { key: "cobalt", label: "Co", unit: "μg" },
 ];
 
 export function exportPDF({ selected, totals: _totals, rda, profile }: ExportArgs) {
@@ -71,6 +68,10 @@ export function exportPDF({ selected, totals: _totals, rda, profile }: ExportArg
     { label: "Fat", key: "fat", unit: "g" },
     { label: "Fiber", key: "fiber", unit: "g" },
     { label: "Sugar", key: "sugar", unit: "g" },
+    { label: "Sat. fat", key: "saturatedFat", unit: "g" },
+    { label: "Monounsat. fat", key: "monounsaturatedFat", unit: "g" },
+    { label: "Polyunsat. fat", key: "polyunsaturatedFat", unit: "g" },
+    { label: "ALA", key: "omega3Ala", unit: "g" }
   ] as const;
 
   const head = [
@@ -84,17 +85,12 @@ export function exportPDF({ selected, totals: _totals, rda, profile }: ExportArg
   ];
 
   const body: (string | number)[][] = selected.map((it) => {
-    const n = calcNutrition(it.food, it.quantity, it.unit) as Record<string, number>;
+    const n = calcNutrition(it.food, it.quantity, it.unit, it.portion) as Record<string, number>;
     return [
       it.food.name,
       String(it.quantity),
       it.unit,
-      formatNum(n.calories, 0),
-      formatNum(n.protein),
-      formatNum(n.carbohydrates),
-      formatNum(n.fat),
-      formatNum(n.fiber),
-      formatNum(n.sugar),
+      ...macroCols.map((column) => formatNum(n[column.key] ?? 0, column.key === "calories" ? 0 : 1)),
       ...MICRO_COLS.map((c) => formatNum(n[c.key] ?? 0)),
     ];
   });
@@ -107,36 +103,21 @@ export function exportPDF({ selected, totals: _totals, rda, profile }: ExportArg
     "Total",
     "",
     "",
-    formatNum(totals.calories, 0),
-    formatNum(totals.protein),
-    formatNum(totals.carbohydrates),
-    formatNum(totals.fat),
-    formatNum(totals.fiber),
-    formatNum(totals.sugar),
+    ...macroCols.map((column) => formatNum(totals[column.key] ?? 0, column.key === "calories" ? 0 : 1)),
     ...MICRO_COLS.map((c) => formatNum(totals[c.key] ?? 0)),
   ];
   const rdaRow: (string | number)[] = [
-    "RDA",
+    "Target / limit",
     "",
     "",
-    String(rdaRec.calories ?? "—"),
-    String(rdaRec.protein ?? "—"),
-    String(rdaRec.carbohydrates ?? "—"),
-    String(rdaRec.fat ?? "—"),
-    String(rdaRec.fiber ?? "—"),
-    String(rdaRec.sugar ?? "—"),
+    ...macroCols.map((column) => (rdaRec[column.key] ?? 0) > 0 ? String(rdaRec[column.key]) : "—"),
     ...MICRO_COLS.map((c) => String(rdaRec[c.key] ?? "—")),
   ];
   const pctRow: (string | number)[] = [
-    "% Completed",
+    "% of target / limit",
     "",
     "",
-    pct(totals.calories, rdaRec.calories ?? 0),
-    pct(totals.protein, rdaRec.protein ?? 0),
-    pct(totals.carbohydrates, rdaRec.carbohydrates ?? 0),
-    pct(totals.fat, rdaRec.fat ?? 0),
-    pct(totals.fiber, rdaRec.fiber ?? 0),
-    pct(totals.sugar, rdaRec.sugar ?? 0),
+    ...macroCols.map((column) => pct(totals[column.key] ?? 0, rdaRec[column.key] ?? 0)),
     ...MICRO_COLS.map((c) => pct(totals[c.key] ?? 0, rdaRec[c.key] ?? 0)),
   ];
 

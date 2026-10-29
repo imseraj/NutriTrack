@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, Mail, Lock, Sparkles, Leaf, ArrowRight, ShieldCheck, Eye, EyeOff, User } from "lucide-react";
+import { Loader2, Mail, Lock, Sparkles, Leaf, ShieldCheck, Eye, EyeOff, User } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -47,15 +47,6 @@ export default function Login() {
     setConfirmPassword("");
     setShowPassword(false);
     setShowConfirmPassword(false);
-  };
-
-  const handleGuestMode = () => {
-    sessionStorage.setItem("nutritrack:guest", "true");
-    toast({
-      title: "Guest Mode Activated",
-      description: "You are tracking calories offline. Progress will be saved locally.",
-    });
-    navigate("/dashboard", { replace: true });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -424,17 +415,6 @@ export default function Login() {
               )}
             </div>
 
-            <div className="flex items-center justify-center gap-1.5 pt-2 border-t border-border/40">
-              <span>Or prefer offline mode?</span>
-              <button
-                type="button"
-                onClick={handleGuestMode}
-                className="text-primary hover:underline font-semibold flex items-center gap-0.5"
-              >
-                Continue as Guest
-                <ArrowRight className="h-3 w-3" />
-              </button>
-            </div>
           </div>
         </div>
       </div>

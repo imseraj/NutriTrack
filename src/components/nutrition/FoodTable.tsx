@@ -1,7 +1,7 @@
 import { useState, Fragment, useRef, useEffect } from "react";
 import { useNutrition } from "@/context/NutritionContext";
 import { Unit } from "@/data/foods";
-import { calcNutrition, formatNum, MicroKey, sumNutrition } from "@/lib/nutrition";
+import { calcNutrition, DetailNutrientKey, formatNum, SelectedUnit, sumNutrition } from "@/lib/nutrition";
 import { Trash2, Plus, Minus, X, ChevronDown, Bookmark, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Slider } from "@/components/ui/slider";
@@ -11,8 +11,12 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 
-type MicroCol = { key: MicroKey; label: string; unit: string };
-const MICRO_COLS: MicroCol[] = [
+type NutrientCol = { key: DetailNutrientKey; label: string; unit: string };
+const DETAIL_COLS: NutrientCol[] = [
+  { key: "saturatedFat", label: "Sat. fat", unit: "g" },
+  { key: "monounsaturatedFat", label: "Mono fat", unit: "g" },
+  { key: "polyunsaturatedFat", label: "Poly fat", unit: "g" },
+  { key: "omega3Ala", label: "ALA", unit: "g" },
   { key: "vitaminA", label: "Vit A", unit: "μg" },
   { key: "vitaminD", label: "Vit D", unit: "μg" },
   { key: "vitaminE", label: "Vit E", unit: "mg" },
@@ -26,27 +30,25 @@ const MICRO_COLS: MicroCol[] = [
   { key: "vitaminB7", label: "B7", unit: "μg" },
   { key: "vitaminB9", label: "B9", unit: "μg" },
   { key: "vitaminB12", label: "B12", unit: "μg" },
+  { key: "choline", label: "Choline", unit: "mg" },
   { key: "calcium", label: "Calcium", unit: "mg" },
   { key: "phosphorus", label: "Phosph.", unit: "mg" },
   { key: "magnesium", label: "Magnes.", unit: "mg" },
   { key: "sodium", label: "Sodium", unit: "mg" },
   { key: "potassium", label: "Potass.", unit: "mg" },
   { key: "chloride", label: "Chloride", unit: "mg" },
-  { key: "sulfur", label: "Sulfur", unit: "mg" },
   { key: "iron", label: "Iron", unit: "mg" },
   { key: "zinc", label: "Zinc", unit: "mg" },
   { key: "iodine", label: "Iodine", unit: "μg" },
   { key: "selenium", label: "Selenium", unit: "μg" },
   { key: "copper", label: "Copper", unit: "mg" },
   { key: "manganese", label: "Mangan.", unit: "mg" },
-  { key: "fluoride", label: "Fluoride", unit: "mg" },
-  { key: "chromium", label: "Chrom.", unit: "μg" },
   { key: "molybdenum", label: "Molybd.", unit: "μg" },
-  { key: "cobalt", label: "Cobalt", unit: "μg" },
+  { key: "cholesterol", label: "Cholest.", unit: "mg" },
 ];
 
-function sliderRange(unit: Unit): { min: number; max: number; step: number } {
-  if (unit === "pieces" || unit === "bowl" || unit === "serving") return { min: 0, max: 10, step: 0.5 };
+function sliderRange(unit: SelectedUnit): { min: number; max: number; step: number } {
+  if (unit === "pieces" || unit === "bowl" || unit === "serving" || unit === "portion") return { min: 0, max: 10, step: 0.5 };
   if (unit === "kg") return { min: 0, max: 2, step: 0.05 };
   return { min: 0, max: 500, step: 5 }; // g, ml
 }
@@ -246,8 +248,24 @@ export function FoodTable() {
               <tbody>
                 <AnimatePresence initial={false}>
                   {selected.map((item) => {
-                    const n = calcNutrition(item.food, item.quantity, item.unit);
-                    const step = item.unit === "pieces" || item.unit === "bowl" || item.unit === "serving" ? 0.5 : 10;
+                    const n = calcNutrition(item.food, item.quantity, item.unit, item.portion);
+                    const step = item.unit === "pieces" || item.unit === "bowl" || item.unit === "serving" || item.unit === "portion" ? 0.5 : 10;
+                    const portionOptions = item.food.portions ?? [];
+                    const unitSelectValue = item.unit === "portion" && item.portion
+                      ? `portion:${item.portion.id}`
+                      : item.unit;
+                    const handleUnitChange = (value: string) => {
+                      const portionId = value.startsWith("portion:") ? value.slice("portion:".length) : null;
+                      const portion = portionId ? portionOptions.find((option) => option.id === portionId) : undefined;
+                      if (portion) {
+                        updateItem(item.uid, { unit: "portion", quantity: 1, portion });
+                      } else {
+                        const quantity = item.unit === "portion" && item.portion
+                          ? item.quantity * item.portion.gramWeight
+                          : item.quantity;
+                        updateItem(item.uid, { unit: value as Unit, quantity });
+                      }
+                    };
                     const incBy = (delta: number) => updateItem(item.uid, { quantity: Math.max(0, +(item.quantity + delta).toFixed(2)) });
                     return (
                       <Fragment key={item.uid}>
@@ -288,9 +306,15 @@ export function FoodTable() {
                           {isMobile ? (
                             <>
                               <td className="px-1 h-[56px] align-middle py-0">
-                                <select value={item.unit} onChange={(e) => updateItem(item.uid, { unit: e.target.value as Unit })}
-                                  className="h-7 w-full px-1 rounded-lg bg-background border border-border text-[10px] outline-none focus:border-primary">
+                                <select value={unitSelectValue} onChange={(e) => handleUnitChange(e.target.value)}
+                                  title={item.portion ? `${item.portion.label} (${item.portion.gramWeight} g)` : item.food.servingSize}
+                                  className="h-7 w-full max-w-[60px] min-w-0 truncate overflow-hidden text-ellipsis whitespace-nowrap px-1 rounded-lg bg-background border border-border text-[10px] outline-none focus:border-primary">
                                   <option value={item.food.baseUnit}>{item.food.baseUnit}</option>
+                                  {portionOptions.map((portion) => (
+                                    <option key={portion.id} value={`portion:${portion.id}`} title={`${portion.label} (${portion.gramWeight} g)`}>
+                                      {portion.label}
+                                    </option>
+                                  ))}
                                 </select>
                               </td>
                               <td className="px-2 h-[56px] align-middle py-0 text-right font-semibold">{formatNum(n.calories, 0)}</td>
@@ -298,9 +322,15 @@ export function FoodTable() {
                           ) : (
                             <>
                               <td className="px-2 h-[56px] align-middle py-0">
-                                <select value={item.unit} onChange={(e) => updateItem(item.uid, { unit: e.target.value as Unit })}
-                                  className="h-8 px-2 rounded-lg bg-background border border-border text-xs outline-none focus:border-primary">
+                                <select value={unitSelectValue} onChange={(e) => handleUnitChange(e.target.value)}
+                                  title={item.portion ? `${item.portion.label} (${item.portion.gramWeight} g)` : item.food.servingSize}
+                                  className="h-8 w-[68px] max-w-[68px] min-w-0 truncate overflow-hidden text-ellipsis whitespace-nowrap px-1 rounded-lg bg-background border border-border text-xs outline-none focus:border-primary">
                                   <option value={item.food.baseUnit}>{item.food.baseUnit}</option>
+                                  {portionOptions.map((portion) => (
+                                    <option key={portion.id} value={`portion:${portion.id}`} title={`${portion.label} (${portion.gramWeight} g)`}>
+                                      {portion.label}
+                                    </option>
+                                  ))}
                                 </select>
                               </td>
                               <td className="px-2 h-[56px] align-middle py-0 text-right font-semibold">{formatNum(n.calories, 0)}</td>
@@ -335,7 +365,7 @@ export function FoodTable() {
                                       className="flex-1"
                                     />
                                     <div className="text-sm font-semibold tabular-nums whitespace-nowrap min-w-[80px] text-right">
-                                      {formatNum(item.quantity)} {item.unit}
+                                      {formatNum(item.quantity)} {item.unit === "portion" ? item.portion?.label ?? "portion" : item.unit}
                                     </div>
                                   </div>
                                   <div className="mt-2 grid grid-cols-4 gap-2 text-[11px]">
@@ -376,7 +406,7 @@ export function FoodTable() {
             onScroll={handleTopScroll}
             className="flex-1 overflow-x-auto scrollbar-sage pb-2 bg-card"
           >
-            <table className="text-sm border-collapse table-fixed" style={{ width: `${(isMobile ? 340 : 0) + 30 * 65 + 50}px` }}>
+            <table className="text-sm border-collapse table-fixed" style={{ width: `${(isMobile ? 340 : 0) + DETAIL_COLS.length * 65 + 50}px` }}>
               <colgroup>
                 {isMobile && (
                   <>
@@ -387,7 +417,7 @@ export function FoodTable() {
                     <col style={{ width: "80px" }} />  {/* Sugar */}
                   </>
                 )}
-                {MICRO_COLS.map((c) => (
+                {DETAIL_COLS.map((c) => (
                   <col key={c.key} style={{ width: "65px" }} />
                 ))}
                 <col style={{ width: "50px" }} />
@@ -403,7 +433,7 @@ export function FoodTable() {
                       <th className="text-right px-2 h-[52px] align-middle py-0 font-medium pr-4">Sugar</th>
                     </>
                   )}
-                  {MICRO_COLS.map((c, idx) => (
+                  {DETAIL_COLS.map((c, idx) => (
                     <th key={c.key} className={`text-right px-2 h-[52px] align-middle py-0 font-medium whitespace-nowrap ${(idx === 0 && !isMobile) ? "pl-4" : ""}`}>
                       {c.label}
                       <div className="text-[9px] opacity-60">{c.unit}</div>
@@ -415,7 +445,7 @@ export function FoodTable() {
               <tbody>
                 <AnimatePresence initial={false}>
                   {selected.map((item) => {
-                    const n = calcNutrition(item.food, item.quantity, item.unit);
+                    const n = calcNutrition(item.food, item.quantity, item.unit, item.portion);
                     return (
                       <Fragment key={item.uid}>
                         <motion.tr
@@ -433,7 +463,7 @@ export function FoodTable() {
                               <td className="px-2 h-[56px] align-middle py-0 text-right text-muted-foreground pr-4">{formatNum(n.sugar)}g</td>
                             </>
                           )}
-                          {MICRO_COLS.map((c, idx) => (
+                          {DETAIL_COLS.map((c, idx) => (
                             <td key={c.key} className={`px-2 h-[56px] align-middle py-0 text-right tabular-nums ${(idx === 0 && !isMobile) ? "pl-4" : ""}`}>{formatNum(n[c.key])}</td>
                           ))}
                           <td className="px-4 h-[56px] align-middle py-0 text-center">
@@ -448,7 +478,7 @@ export function FoodTable() {
                             <motion.tr key={item.uid + "-exp"}
                               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                               className="bg-secondary/20 border-t border-border/30 h-[92px]">
-                              <td colSpan={(isMobile ? 5 : 0) + MICRO_COLS.length + 1} className="h-[92px]"></td>
+                              <td colSpan={(isMobile ? 5 : 0) + DETAIL_COLS.length + 1} className="h-[92px]"></td>
                             </motion.tr>
                           )}
                         </AnimatePresence>
@@ -506,7 +536,7 @@ export function FoodTable() {
                   )}
                 </tr>
                 <tr className="bg-muted/20 text-muted-foreground h-[40px]">
-                  <td className="px-4 h-[40px] align-middle py-0">RDA target</td>
+                  <td className="px-4 h-[40px] align-middle py-0">Target / limit</td>
                   <td colSpan={2} className="h-[40px] align-middle py-0"></td>
                   {isMobile ? (
                     <td className="px-2 h-[40px] align-middle py-0 text-right tabular-nums">{rda.calories}</td>
@@ -545,7 +575,7 @@ export function FoodTable() {
             onScroll={handleBottomScroll}
             className="flex-1 overflow-x-auto scrollbar-hide bg-card"
           >
-            <table className="text-sm border-collapse table-fixed" style={{ width: `${(isMobile ? 340 : 0) + 30 * 65 + 50}px` }}>
+            <table className="text-sm border-collapse table-fixed" style={{ width: `${(isMobile ? 340 : 0) + DETAIL_COLS.length * 65 + 50}px` }}>
               <colgroup>
                 {isMobile && (
                   <>
@@ -556,7 +586,7 @@ export function FoodTable() {
                     <col style={{ width: "80px" }} />  {/* Sugar */}
                   </>
                 )}
-                {MICRO_COLS.map((c) => (
+                {DETAIL_COLS.map((c) => (
                   <col key={c.key} style={{ width: "65px" }} />
                 ))}
                 <col style={{ width: "50px" }} />
@@ -572,7 +602,7 @@ export function FoodTable() {
                       <td className="px-2 h-[40px] align-middle py-0 text-right text-muted-foreground pr-4 tabular-nums">{formatNum(totals.sugar)}g</td>
                     </>
                   )}
-                  {MICRO_COLS.map((c, idx) => (
+                  {DETAIL_COLS.map((c, idx) => (
                     <td key={c.key} className={`px-2 h-[40px] align-middle py-0 text-right tabular-nums ${(idx === 0 && !isMobile) ? "pl-4" : ""}`}>{formatNum(totals[c.key])}</td>
                   ))}
                   <td className="px-4 h-[40px] align-middle py-0"></td>
@@ -587,9 +617,11 @@ export function FoodTable() {
                       <td className="px-2 h-[40px] align-middle py-0 text-right pr-4 tabular-nums">{rda.sugar}g</td>
                     </>
                   )}
-                  {MICRO_COLS.map((c, idx) => (
+                  {DETAIL_COLS.map((c, idx) => (
                     <td key={c.key} className={`px-2 h-[40px] align-middle py-0 text-right tabular-nums ${(idx === 0 && !isMobile) ? "pl-4" : ""}`}>
-                      {formatNum((rda as Record<string, number>)[c.key] ?? 0)}
+                      {((rda as Record<string, number>)[c.key] ?? 0) > 0
+                        ? `${formatNum((rda as Record<string, number>)[c.key])}${c.key === "saturatedFat" ? " max" : ""}`
+                        : "—"}
                     </td>
                   ))}
                   <td className="px-4 h-[40px] align-middle py-0"></td>
@@ -603,9 +635,11 @@ export function FoodTable() {
                       })}
                     </>
                   )}
-                  {MICRO_COLS.map((c, idx) => {
-                    const p = pct(totals[c.key], (rda as Record<string, number>)[c.key] ?? 0);
-                    return <td key={c.key} className={`px-2 h-[40px] align-middle py-0 text-right tabular-nums ${pctClass(p)} ${(idx === 0 && !isMobile) ? "pl-4" : ""}`}>{p}%</td>;
+                  {DETAIL_COLS.map((c, idx) => {
+                    const target = (rda as Record<string, number>)[c.key] ?? 0;
+                    const p = target > 0 ? pct(totals[c.key], target) : null;
+                    const overLimit = c.key === "saturatedFat" && p !== null && p > 100;
+                    return <td key={c.key} className={`px-2 h-[40px] align-middle py-0 text-right tabular-nums ${overLimit ? "text-destructive" : p === null ? "text-muted-foreground" : pctClass(p)} ${(idx === 0 && !isMobile) ? "pl-4" : ""}`}>{p === null ? "—" : `${p}%`}</td>;
                   })}
                   <td className="px-4 h-[40px] align-middle py-0"></td>
                 </tr>

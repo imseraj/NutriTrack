@@ -27,6 +27,7 @@ export function MicroBarChart() {
     { k: "vitaminB6", label: "B6" },
     { k: "vitaminB9", label: "B9" },
     { k: "vitaminB12", label: "B12" },
+    { k: "choline", label: "Choline" },
     { k: "calcium", label: "Ca" },
     { k: "iron", label: "Fe" },
     { k: "magnesium", label: "Mg" },
@@ -46,7 +47,7 @@ export function MicroBarChart() {
         <div className="h-8 w-8 rounded-lg bg-accent/20 grid place-items-center">
           <FlaskConical className="h-4 w-4 text-accent" />
         </div>
-        <h3 className="font-semibold">Micronutrient Coverage (% of RDA)</h3>
+        <h3 className="font-semibold">Micronutrient Coverage (% of Target/Limit)</h3>
       </div>
       <div className="h-72">
         <ResponsiveContainer>
