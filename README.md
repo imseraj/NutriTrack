@@ -379,9 +379,19 @@ npx wrangler deploy
 
 For local development, copy `workers/fdc-api/.dev.vars.example` to `workers/fdc-api/.dev.vars` and put your key in that ignored local file. Start the Worker with `npx wrangler dev` and set `VITE_FDC_API_URL=http://127.0.0.1:8787` in the app's `.env`. For production, set `VITE_FDC_API_URL` to the `workers.dev` URL printed by deploy and rebuild the frontend.
 
-The Worker allows local Vite origins and the default Firebase Hosting domains. Add a custom production origin to `ALLOWED_ORIGINS` in `workers/fdc-api/wrangler.jsonc`. Searches default to SR Legacy and return 12 foods per page; users can explicitly search the other supported data types, and more results are loaded on demand. Search results are not written to Firestore. USDA nutrient values are mapped into the app's per-100 g or package-serving model. USDA FoodData Central data is public domain; attribution is requested by USDA.
+The Worker allows local Vite origins, the default Firebase Hosting domains, and `https://nutriotrack.netlify.app`. Add a custom production origin to `ALLOWED_ORIGINS` in `workers/fdc-api/wrangler.jsonc`, without a trailing slash or path, then redeploy the Worker. Searches default to SR Legacy and return 12 foods per page; users can explicitly search the other supported data types, and more results are loaded on demand. Search results are not written to Firestore. USDA nutrient values are mapped into the app's per-100 g or package-serving model. USDA FoodData Central data is public domain; attribution is requested by USDA.
 
-The callable allows the local Vite origins and the default `nutritrack.web.app` / `nutritrack.firebaseapp.com` origins. Add any custom production origin to `allowedOrigins` in `functions/index.js`, then redeploy the function.
+### Netlify deployment
+
+The Netlify frontend and the Cloudflare Worker are deployed separately. Deploying the frontend does not deploy the Worker or upload its secret.
+
+1. Deploy the Worker using the commands above. If it is already deployed, run `npx wrangler deploy` again after changing `ALLOWED_ORIGINS`.
+2. In Netlify, open the site's **Project configuration > Environment variables** and set `VITE_FDC_API_URL` to the HTTPS Worker URL printed by Wrangler, for example `https://nutritrack-fdc-api.<your-subdomain>.workers.dev`. Make the variable available to builds in the Production deploy context. Do not use the example placeholder or a localhost URL.
+3. Trigger a new production deploy. Vite embeds `VITE_*` variables during the build, so changing a Netlify environment variable does not update an existing deployment. Local `.env` files are ignored by Git and are not uploaded to Netlify.
+4. Ensure `nutriotrack.netlify.app` is listed in **Firebase Console > Authentication > Settings > Authorized domains** for authentication on this domain.
+5. Sign in on the deployed site and search for a food. `USDA search is not configured. Set VITE_FDC_API_URL.` means the frontend was built without the variable. A CORS error means the Worker must allow the site's exact origin and be redeployed.
+
+Keep `FDC_API_KEY` only in Cloudflare Worker secrets. Never put the USDA key in a `VITE_*` variable or the frontend bundle.
 
 ---
 
