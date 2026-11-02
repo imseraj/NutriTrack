@@ -492,22 +492,22 @@ const Dashboard = () => {
 
         <section>
           <Tabs defaultValue="plate" className="w-full">
-            <TabsList className={`grid w-full max-w-3xl ${user ? 'grid-cols-2 sm:grid-cols-5' : 'grid-cols-2'}`}>
-              <TabsTrigger value="plate" className="gap-2 text-xs sm:text-sm">
+            <TabsList className={`h-auto grid w-full max-w-3xl grid-cols-2 gap-1 ${user ? 'sm:grid-cols-5' : ''}`}>
+              <TabsTrigger value="plate" className="min-w-0 gap-1.5 px-2 text-xs sm:gap-2 sm:px-3 sm:text-sm">
                 <Utensils className="h-4 w-4" /> Your Plate
               </TabsTrigger>
-              <TabsTrigger value="charts" className="gap-2 text-xs sm:text-sm">
+              <TabsTrigger value="charts" className="min-w-0 gap-1.5 px-2 text-xs sm:gap-2 sm:px-3 sm:text-sm">
                 <BarChart3 className="h-4 w-4" /> Charts
               </TabsTrigger>
               {user && (
                 <>
-                  <TabsTrigger value="food-details" className="gap-2 text-xs sm:text-sm">
+                  <TabsTrigger value="food-details" className="min-w-0 gap-1.5 px-2 text-xs sm:gap-2 sm:px-3 sm:text-sm">
                     <FileText className="h-4 w-4" /> Food Details
                   </TabsTrigger>
-                  <TabsTrigger value="saved" className="gap-2 text-xs sm:text-sm">
+                  <TabsTrigger value="saved" className="min-w-0 gap-1.5 px-2 text-xs sm:gap-2 sm:px-3 sm:text-sm">
                     <Bookmark className="h-4 w-4" /> Saved Meals
                   </TabsTrigger>
-                  <TabsTrigger value="custom" className="gap-2 text-xs sm:text-sm">
+                  <TabsTrigger value="custom" className="min-w-0 gap-1.5 px-2 text-xs sm:gap-2 sm:px-3 sm:text-sm">
                     <Plus className="h-4 w-4" /> Add Custom
                   </TabsTrigger>
                 </>
@@ -653,7 +653,7 @@ const Dashboard = () => {
 
       {/* Terms & Conditions Dialog */}
       <Dialog open={showTerms} onOpenChange={setShowTerms}>
-        <DialogContent className="max-w-lg rounded-2xl border border-border/60 shadow-xl backdrop-blur-md p-0 overflow-hidden">
+        <DialogContent closeButtonClassName="inline-flex items-center justify-center rounded-full p-1 ring-2 ring-ring" className="max-w-lg rounded-2xl border border-border/60 shadow-xl backdrop-blur-md p-0 overflow-hidden">
           <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40 bg-gradient-to-b from-primary/5 to-transparent">
             <DialogTitle className="text-2xl font-display font-semibold text-primary">Terms & Conditions</DialogTitle>
             <DialogDescription>

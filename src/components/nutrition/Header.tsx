@@ -287,12 +287,15 @@ export function Header() {
                 <User className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Profile</span>
               </button>
             </DialogTrigger>
-            <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-lg">
-              <DialogHeader className="shrink-0">
-                <DialogTitle>Your Profile</DialogTitle>
+            <DialogContent
+              closeButtonClassName="inline-flex items-center justify-center rounded-full p-1 ring-2 ring-ring"
+              className="flex max-h-[85vh] max-w-lg flex-col overflow-hidden rounded-2xl border border-border/60 bg-background p-0 shadow-xl backdrop-blur-md"
+            >
+              <DialogHeader className="shrink-0 border-b border-border/40 bg-gradient-to-b from-primary/5 to-transparent px-6 pb-4 pt-6">
+                <DialogTitle className="text-2xl font-display font-semibold text-primary">Your Profile</DialogTitle>
               </DialogHeader>
-              <div className="-mr-3 min-h-0 flex-1 overflow-y-auto scrollbar-sage pr-1">
-                <div className="mr-6 grid grid-cols-2 gap-3 pt-2 text-sm">
+              <div className="min-h-0 flex-1 overflow-y-auto scrollbar-sage px-6 py-5">
+                <div className="grid grid-cols-2 gap-3 text-sm">
                 <label className="space-y-1 col-span-2">
                   <span className="text-xs text-muted-foreground">Name</span>
                   <Input type="text" value={profile.name || ""} placeholder="e.g. John Doe"
@@ -552,7 +555,7 @@ export function Header() {
                 </div>
                 </div>
               </div>
-              <DialogFooter className="shrink-0">
+              <DialogFooter className="shrink-0 flex-row justify-end border-t border-border/40 px-6 py-4">
                 <Button onClick={() => setOpenProfile(false)}>Done</Button>
               </DialogFooter>
             </DialogContent>
