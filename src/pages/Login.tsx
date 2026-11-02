@@ -162,7 +162,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-2 relative bg-background overflow-hidden">
+    <div className="min-h-dvh grid lg:grid-cols-2 relative bg-background overflow-hidden">
       {/* Left panel: Info & Premium Brand Visual */}
       <div className="hidden lg:flex flex-col justify-between p-12 bg-secondary/30 relative overflow-hidden border-r border-border/40">
         <div className="flex items-center gap-3 z-10">
@@ -209,7 +209,7 @@ export default function Login() {
       </div>
 
       {/* Right panel: Authentication forms */}
-      <div className="flex flex-col justify-center px-6 py-12 md:px-12 lg:px-20 relative">
+      <div className="flex flex-col justify-center px-6 py-6 md:px-12 md:py-12 lg:px-20 relative">
         <div className="mx-auto w-full max-w-sm space-y-6">
           <div className="flex flex-col space-y-2 text-center lg:text-left">
             <div className="flex items-center justify-center lg:justify-start gap-2 lg:hidden mb-4">
