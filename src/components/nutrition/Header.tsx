@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Moon, Sun, Leaf, User, Save, LogOut, Loader2, LogIn, ChevronDown, Key, Eye, EyeOff, RotateCcw } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useNutrition } from "@/context/NutritionContext";
@@ -58,6 +58,7 @@ export function Header() {
     ? Math.max(0, Math.round(10 * profile.weight + 6.25 * profile.height - 5 * profile.age + (profile.gender === "male" ? 5 : -161)))
     : null;
   const goalCalories = estimatedTargets.calories - maintenanceCalories;
+  const profileTitleRef = useRef<HTMLHeadingElement>(null);
   const [customTargetDrafts, setCustomTargetDrafts] = useState<Partial<Record<CoreTargetKey, string>>>({});
   const [mealName, setMealName] = useState("");
   const [openSave, setOpenSave] = useState(false);
@@ -288,11 +289,15 @@ export function Header() {
               </button>
             </DialogTrigger>
             <DialogContent
+              onOpenAutoFocus={(event) => {
+                event.preventDefault();
+                profileTitleRef.current?.focus();
+              }}
               closeButtonClassName="inline-flex items-center justify-center rounded-full p-1 ring-2 ring-ring"
               className="flex max-h-[85vh] max-w-lg flex-col overflow-hidden rounded-2xl border border-border/60 bg-background p-0 shadow-xl backdrop-blur-md"
             >
               <DialogHeader className="shrink-0 border-b border-border/40 bg-gradient-to-b from-primary/5 to-transparent px-6 pb-4 pt-6">
-                <DialogTitle className="text-2xl font-display font-semibold text-primary">Your Profile</DialogTitle>
+                <DialogTitle ref={profileTitleRef} tabIndex={-1} className="text-2xl font-display font-semibold text-primary">Your Profile</DialogTitle>
               </DialogHeader>
               <div className="min-h-0 flex-1 overflow-y-auto scrollbar-sage px-6 py-5">
                 <div className="grid grid-cols-2 gap-3 text-sm">
