@@ -8,6 +8,11 @@ import { toast } from "@/hooks/use-toast";
 import { Loader2, Mail, Lock, Sparkles, Leaf, ShieldCheck, Eye, EyeOff, User } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { motion, AnimatePresence } from "framer-motion";
+import { getErrorCode, getErrorMessage } from "@/lib/errorDetails";
+
+interface LoginLocationState {
+  from?: { pathname?: string };
+}
 
 export default function Login() {
   const {
@@ -35,8 +40,11 @@ export default function Login() {
   // If already logged in, redirect to homepage or previous state
   useEffect(() => {
     if (user) {
-      const from = (location.state as any)?.from?.pathname || "/dashboard";
-      navigate(from, { replace: true });
+      const requestedPath = (location.state as LoginLocationState | null)?.from?.pathname;
+      const destination = requestedPath?.startsWith("/") && !requestedPath.startsWith("//")
+        ? requestedPath
+        : "/dashboard";
+      navigate(destination, { replace: true });
     }
   }, [user, navigate, location]);
 
@@ -103,25 +111,26 @@ export default function Login() {
         await signUp(email, password, name);
         toast({ title: "Account Created", description: `Welcome to NutriTrack${name ? `, ${name}` : ""}!` });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
+      const code = getErrorCode(err);
       let errMsg = "An authentication error occurred.";
-      if (err.code === "auth/user-not-found") {
+      if (code === "auth/user-not-found") {
         errMsg = "This email address is not registered. Please create an account first.";
-      } else if (err.code === "auth/wrong-password" || err.code === "auth/invalid-credential") {
+      } else if (code === "auth/wrong-password" || code === "auth/invalid-credential") {
         errMsg = "Invalid credentials. If you previously signed up with Google, please use 'Continue with Google'.";
-      } else if (err.code === "auth/email-already-in-use") {
+      } else if (code === "auth/email-already-in-use") {
         errMsg = "This email is already registered. Try signing in with your password, or use 'Continue with Google' if you used it originally.";
-      } else if (err.code === "auth/invalid-email") {
+      } else if (code === "auth/invalid-email") {
         errMsg = "Please enter a valid email address.";
-      } else if (err.code === "auth/weak-password") {
+      } else if (code === "auth/weak-password") {
         errMsg = "Password is too weak. It must be at least 6 characters.";
-      } else if (err.code === "auth/user-disabled") {
+      } else if (code === "auth/user-disabled") {
         errMsg = "This account has been disabled. Please contact support.";
-      } else if (err.code === "auth/too-many-requests") {
+      } else if (code === "auth/too-many-requests") {
         errMsg = "Too many failed attempts. Access has been temporarily restricted. Try again later.";
-      } else if (err.message) {
-        errMsg = err.message;
+      } else {
+        errMsg = getErrorMessage(err) ?? errMsg;
       }
       toast({
         title: "Error",
@@ -138,12 +147,12 @@ export default function Login() {
     try {
       await signInWithGoogle();
       toast({ title: "Welcome!", description: "Successfully signed in with Google." });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      if (err.code !== "auth/popup-closed-by-user") {
+      if (getErrorCode(err) !== "auth/popup-closed-by-user") {
         toast({
           title: "Google sign-in failed",
-          description: err.message || "Could not complete authorization.",
+          description: getErrorMessage(err) ?? "Could not complete authorization.",
           variant: "destructive",
         });
       }

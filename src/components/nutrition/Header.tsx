@@ -11,6 +11,7 @@ import { exportPDF } from "@/lib/pdf";
 import { CoreTargetKey, CoreTargetOverrides, computeRDA } from "@/data/foods";
 import { formatNum } from "@/lib/nutrition";
 import { toast } from "@/hooks/use-toast";
+import { getErrorCode, getErrorMessage } from "@/lib/errorDetails";
 import { AuthDialog } from "@/components/auth/AuthDialog";
 import {
   DropdownMenu,
@@ -48,6 +49,15 @@ export function Header() {
     setOpenProfile
   } = useNutrition();
   const estimatedTargets = computeRDA(profile);
+  const maintenanceCalories = computeRDA({ ...profile, goal: "maintain" }).calories;
+  const hasEnergyInputs = Number.isFinite(profile.age) && profile.age >= 0 &&
+    Number.isFinite(profile.weight) && profile.weight > 0 &&
+    Number.isFinite(profile.height) && profile.height > 0;
+  const isAdultEnergyProfile = profile.age >= 19 && !profile.isPregnant && !profile.isLactating;
+  const basalCalories = hasEnergyInputs && isAdultEnergyProfile
+    ? Math.max(0, Math.round(10 * profile.weight + 6.25 * profile.height - 5 * profile.age + (profile.gender === "male" ? 5 : -161)))
+    : null;
+  const goalCalories = estimatedTargets.calories - maintenanceCalories;
   const [customTargetDrafts, setCustomTargetDrafts] = useState<Partial<Record<CoreTargetKey, string>>>({});
   const [mealName, setMealName] = useState("");
   const [openSave, setOpenSave] = useState(false);
@@ -62,6 +72,10 @@ export function Header() {
   const navigate = useNavigate();
 
   const handleChangePassword = async () => {
+    if (!user) {
+      toast({ title: "Authentication required", description: "Sign in before changing your password.", variant: "destructive" });
+      return;
+    }
     if (!currentPassword) {
       toast({ title: "Error", description: "Please enter your current password.", variant: "destructive" });
       return;
@@ -83,19 +97,20 @@ export function Header() {
         await reauthenticateWithCredential(user, credential);
       }
 
-      await updatePassword(user!, newPassword);
+      await updatePassword(user, newPassword);
       toast({ title: "Success", description: "Password updated successfully." });
       setOpenPasswordDialog(false);
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-    } catch (error: any) {
-      if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
+    } catch (error: unknown) {
+      const code = getErrorCode(error);
+      if (code === 'auth/invalid-credential' || code === 'auth/wrong-password') {
         toast({ title: "Error", description: "Incorrect current password.", variant: "destructive" });
-      } else if (error.code === 'auth/requires-recent-login') {
+      } else if (code === 'auth/requires-recent-login') {
         toast({ title: "Authentication required", description: "Please log out and log back in to change your password.", variant: "destructive" });
       } else {
-         toast({ title: "Error", description: error.message, variant: "destructive" });
+         toast({ title: "Error", description: getErrorMessage(error) ?? "Could not update your password.", variant: "destructive" });
       }
     } finally {
       setIsChangingPassword(false);
@@ -111,17 +126,22 @@ export function Header() {
     }
   };
 
-  const handleSaveExport = () => {
+  const handleSaveExport = async () => {
     if (selected.length === 0) {
       toast({ title: "No foods to save", description: "Add some foods first." });
       return;
     }
     const name = mealName.trim() || `Meal ${new Date().toLocaleDateString()}`;
-    saveMeal(name);
-    exportPDF({ selected, totals, rda, profile });
-    toast({ title: "Saved & exported", description: `"${name}" saved and PDF downloaded.` });
-    setMealName("");
-    setOpenSave(false);
+    try {
+      await saveMeal(name);
+      exportPDF({ selected, totals, rda, profile });
+      toast({ title: "Saved & exported", description: `"${name}" saved and PDF downloaded.` });
+      setMealName("");
+      setOpenSave(false);
+    } catch (error) {
+      console.error("Save and export failed:", error);
+      toast({ title: "Save or export failed", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    }
   };
 
   return (
@@ -403,6 +423,41 @@ export function Header() {
                       ))}
                     </div>
                   </div>
+                  {hasEnergyInputs && (
+                    <div className="mb-4 space-y-2">
+                      <h3 className="text-xs font-semibold text-primary">Calorie breakdown</h3>
+                      <dl className="space-y-2 text-xs">
+                        {basalCalories !== null && (
+                          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                            <dt className="text-muted-foreground">BMR (estimated energy at rest)</dt>
+                            <dd className="font-medium tabular-nums">{basalCalories} kcal/day</dd>
+                          </div>
+                        )}
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                          <dt className="text-muted-foreground">{isAdultEnergyProfile ? "Maintenance / TDEE (EER estimate)" : "Baseline energy (life-stage EER)"}</dt>
+                          <dd className="font-medium tabular-nums">{maintenanceCalories} kcal/day</dd>
+                        </div>
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                          <dt className="text-muted-foreground">Goal adjustment</dt>
+                          <dd className="font-medium tabular-nums">{goalCalories > 0 ? "+" : ""}{goalCalories} kcal/day</dd>
+                        </div>
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-t border-border/50 pt-2">
+                          <dt className="font-medium">Calculated calorie target</dt>
+                          <dd className="font-semibold tabular-nums">{estimatedTargets.calories} kcal/day</dd>
+                        </div>
+                        {profile.useCustomTargets && isAdultEnergyProfile && (
+                          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                            <dt className="font-medium">Active calorie target (custom)</dt>
+                            <dd className="font-semibold tabular-nums">{rda.calories} kcal/day</dd>
+                          </div>
+                        )}
+                      </dl>
+                      <p className="text-[11px] text-muted-foreground">
+                        {basalCalories !== null && "BMR uses Mifflin-St Jeor for reference only. "}
+                        The calorie target uses NASEM EER, not BMR multiplied by activity. All values are estimates.
+                      </p>
+                    </div>
+                  )}
                   {profile.age >= 19 && !profile.isPregnant && !profile.isLactating ? (
                     <>
                       <label className="flex items-center gap-2 text-sm font-medium">

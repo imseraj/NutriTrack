@@ -1,4 +1,5 @@
 import { useNutrition } from "@/context/NutritionContext";
+import { formatNum, MicroKey } from "@/lib/nutrition";
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -7,6 +8,12 @@ import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend, Cell, PieChart, Pie } from "recharts";
 import { TrendingUp, Activity, Award, FlaskConical, Pencil } from "lucide-react";
+
+interface MicroChartTickProps {
+  x?: number;
+  y?: number;
+  payload?: { value: string };
+}
 
 export function MicroBarChart() {
   const { totals, rda } = useNutrition();
@@ -18,7 +25,7 @@ export function MicroBarChart() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const keys: { k: string; label: string }[] = [
+  const keys: { k: MicroKey; label: string }[] = [
     { k: "vitaminA", label: "Vit A" },
     { k: "vitaminC", label: "Vit C" },
     { k: "vitaminD", label: "Vit D" },
@@ -37,9 +44,9 @@ export function MicroBarChart() {
     { k: "selenium", label: "Se" },
   ];
   const data = keys.map(({ k, label }) => {
-    const v = (totals as Record<string, number>)[k] ?? 0;
-    const t = (rda as unknown as Record<string, number>)[k] ?? 0;
-    return { name: label, pct: t > 0 ? Math.min(200, Math.round((v / t) * 100)) : 0 };
+    const v = totals[k];
+    const t = rda[k];
+    return { name: label, pct: t > 0 ? Math.round((v / t) * 100) : 0 };
   });
   return (
     <div className="glass-card p-5">
@@ -58,9 +65,9 @@ export function MicroBarChart() {
               stroke="hsl(var(--muted-foreground))" 
               interval={0}
               tickMargin={10}
-              tick={(props: any) => {
-                const { x, y, payload } = props;
-                const words = isMobile ? payload.value.split(" ") : [payload.value];
+              tick={({ x = 0, y = 0, payload }: MicroChartTickProps) => {
+                const label = payload?.value ?? "";
+                const words = isMobile ? label.split(" ") : [label];
                 return (
                   <g transform={`translate(${x},${y})`}>
                     <text x={0} y={0} textAnchor="middle" fill="hsl(var(--muted-foreground))" fontSize={10}>
@@ -75,8 +82,8 @@ export function MicroBarChart() {
               }}
             />
             <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
-            <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }} formatter={(v: number) => `${v}%`} />
-            <Bar dataKey="pct" radius={[6, 6, 0, 0]}>
+            <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }} formatter={(v: number) => [`${v}%`, "Target/limit"]} />
+            <Bar dataKey="pct" name="Target/limit" radius={[6, 6, 0, 0]}>
               {data.map((d, i) => (
                 <Cell key={i} fill={d.pct >= 100 ? "hsl(var(--primary))" : d.pct >= 50 ? "hsl(var(--accent))" : "hsl(var(--muted-foreground))"} />
               ))}
@@ -91,9 +98,9 @@ export function MicroBarChart() {
 export function MacroPie() {
   const { totals } = useNutrition();
   const data = [
-    { name: "Protein", value: Math.max(0, totals.protein * 4), color: "hsl(var(--protein))" },
-    { name: "Carbs", value: Math.max(0, totals.carbohydrates * 4), color: "hsl(var(--carbs))" },
-    { name: "Fat", value: Math.max(0, totals.fat * 9), color: "hsl(var(--fat))" },
+    { name: "Protein", grams: totals.protein, value: Math.max(0, totals.protein * 4), color: "hsl(var(--protein))" },
+    { name: "Carbs", grams: totals.carbohydrates, value: Math.max(0, totals.carbohydrates * 4), color: "hsl(var(--carbs))" },
+    { name: "Fat", grams: totals.fat, value: Math.max(0, totals.fat * 9), color: "hsl(var(--fat))" },
   ];
   const total = data.reduce((s, d) => s + d.value, 0) || 1;
   return (
@@ -102,7 +109,10 @@ export function MacroPie() {
         <div className="h-8 w-8 rounded-lg bg-primary/15 grid place-items-center">
           <Activity className="h-4 w-4 text-primary" />
         </div>
-        <h3 className="font-semibold">Macro Breakdown</h3>
+        <div>
+          <h3 className="font-semibold">Macro Breakdown</h3>
+          <p className="text-xs text-muted-foreground">Current plate · share of macro calories</p>
+        </div>
       </div>
       <div className="h-44">
         <ResponsiveContainer>
@@ -110,7 +120,10 @@ export function MacroPie() {
             <Pie data={data} dataKey="value" innerRadius={45} outerRadius={75} paddingAngle={3} stroke="none">
               {data.map((d, i) => <Cell key={i} fill={d.color} />)}
             </Pie>
-            <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }} />
+            <Tooltip
+              contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}
+              formatter={(value: number) => `${formatNum(value)} kcal (${Math.round((value / total) * 100)}%)`}
+            />
           </PieChart>
         </ResponsiveContainer>
       </div>
@@ -121,9 +134,45 @@ export function MacroPie() {
               <span className="h-2 w-2 rounded-full" style={{ background: d.color }} />
               <span className="font-medium">{d.name}</span>
             </div>
-            <div className="text-muted-foreground tabular-nums">{Math.round((d.value / total) * 100)}%</div>
+            <div className="text-muted-foreground tabular-nums">{formatNum(d.grams)} g</div>
+            <div className="text-muted-foreground tabular-nums">{Math.round((d.value / total) * 100)}% of macro calories</div>
           </div>
         ))}
+      </div>
+      <p className="text-xs text-muted-foreground mt-3">
+        Estimated using 4 kcal/g for protein and carbs, and 9 kcal/g for fat. This estimate can differ from the food database's reported calories.
+      </p>
+    </div>
+  );
+}
+
+export function MacroTargetChart() {
+  const { totals, rda } = useNutrition();
+  const data = [
+    { name: "Protein", consumed: totals.protein, target: rda.protein },
+    { name: "Carbs", consumed: totals.carbohydrates, target: rda.carbohydrates },
+    { name: "Fat", consumed: totals.fat, target: rda.fat },
+  ];
+
+  return (
+    <div className="glass-card p-5">
+      <h3 className="font-semibold">Macronutrients vs Targets</h3>
+      <p className="text-xs text-muted-foreground mt-1 mb-3">Current plate · grams consumed versus daily targets</p>
+      <div className="h-64">
+        <ResponsiveContainer>
+          <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+            <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
+            <YAxis unit=" g" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
+            <Tooltip
+              contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}
+              formatter={(value: number) => `${formatNum(value)} g`}
+            />
+            <Legend />
+            <Bar dataKey="consumed" name="Consumed" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} />
+            <Bar dataKey="target" name="Daily target" fill="hsl(var(--accent))" radius={[6, 6, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
       </div>
     </div>
   );

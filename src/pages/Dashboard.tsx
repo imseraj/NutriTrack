@@ -4,9 +4,10 @@ import { FoodSearch } from "@/components/nutrition/FoodSearch";
 import { FoodTable } from "@/components/nutrition/FoodTable";
 import { FoodDetails } from "@/components/nutrition/FoodDetails";
 import { RDATable } from "@/components/nutrition/RDATable";
-import { MacroPie, HistoryChart, MicroBarChart } from "@/components/nutrition/Charts";
+import { MacroPie, HistoryChart, MicroBarChart, MacroTargetChart } from "@/components/nutrition/Charts";
+import { WeightHistoryChart } from "@/components/nutrition/WeightHistoryChart";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { formatNum, sumNutrition } from "@/lib/nutrition";
+import { formatNum } from "@/lib/nutrition";
 import { motion } from "framer-motion";
 import { Flame, Sparkles, Bookmark, Utensils, BarChart3, Trash2, Plus, Loader2, Edit, Check, User, AlertCircle, FileText } from "lucide-react";
 import { WaterTracker } from "@/components/nutrition/WaterTracker";
@@ -15,6 +16,7 @@ import { CustomFoodForm } from "@/components/nutrition/CustomFoodForm";
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { toast } from "@/hooks/use-toast";
+import { getErrorMessage } from "@/lib/errorDetails";
 import { Food } from "@/data/foods";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
@@ -149,7 +151,22 @@ function MealsCountTile() {
 }
 
 function SavedMealsTab() {
-  const { savedMeals, loadMeal, deleteMeal, logDay } = useNutrition();
+  const { savedMeals, loadMeal, deleteMeal, logWrappedMeal, plateBusy } = useNutrition();
+  const [pendingMeal, setPendingMeal] = useState<string | null>(null);
+  const loadSavedMeal = async (id: string, log: boolean) => {
+    if (pendingMeal || plateBusy) return;
+    setPendingMeal(id);
+    try {
+      const groupId = await loadMeal(id);
+      if (log) await logWrappedMeal(groupId);
+      toast({ title: log ? "Meal logged" : "Meal added to plate", description: log ? "This meal is marked logged to prevent repeat logging." : "Added as a new wrap without replacing existing foods." });
+    } catch (error) {
+      console.error("Could not load saved meal:", error);
+      toast({ title: "Meal action failed", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    } finally {
+      setPendingMeal(null);
+    }
+  };
 
   if (savedMeals.length === 0) {
     return (
@@ -196,28 +213,16 @@ function SavedMealsTab() {
 
           <div className="flex gap-2 pt-2 border-t border-border/50">
             <button
-              onClick={() => {
-                loadMeal(meal.id);
-                toast({
-                  title: "Plate Loaded",
-                  description: `"${meal.name}" items have been loaded onto your plate.`,
-                });
-              }}
+              disabled={!!pendingMeal || plateBusy}
+              onClick={() => void loadSavedMeal(meal.id, false)}
               className="flex-1 inline-flex items-center justify-center gap-1 rounded-md bg-primary text-primary-foreground px-2.5 py-2 text-xs font-semibold hover:opacity-90 transition-opacity"
             >
               <Plus className="h-3.5 w-3.5" />
               Load to plate
             </button>
             <button
-              onClick={async () => {
-                await loadMeal(meal.id);
-                const mealTotals = sumNutrition(meal.items);
-                await logDay(mealTotals, meal.items.length);
-                toast({
-                  title: "Meal Logged!",
-                  description: `"${meal.name}" (${Math.round(mealTotals.calories)} kcal) has been logged to today's history.`,
-                });
-              }}
+              disabled={!!pendingMeal || plateBusy}
+              onClick={() => void loadSavedMeal(meal.id, true)}
               className="flex-1 inline-flex items-center justify-center gap-1 rounded-md bg-secondary text-secondary-foreground hover:bg-muted px-2.5 py-2 text-xs font-semibold transition-colors"
             >
               <Check className="h-3.5 w-3.5" />
@@ -258,10 +263,10 @@ function CustomFoodsTab() {
         if (foodToEdit && foodToEdit.id === foodId) {
           setFoodToEdit(null);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         toast({
           title: "Deletion failed",
-          description: err.message || "An error occurred.",
+          description: getErrorMessage(err) ?? "An error occurred.",
           variant: "destructive",
         });
       }
@@ -279,10 +284,10 @@ function CustomFoodsTab() {
         if (foodToEdit && foodToEdit.id === foodId) {
           setFoodToEdit(null);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         toast({
           title: "Deletion failed",
-          description: err.message || "An error occurred.",
+          description: getErrorMessage(err) ?? "An error occurred.",
           variant: "destructive",
         });
       }
@@ -541,8 +546,12 @@ const Dashboard = () => {
 
             <TabsContent value="charts" className="mt-6 space-y-4">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <MacroPie />
                 <HistoryChart />
+                <WeightHistoryChart />
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <MacroPie />
+                <MacroTargetChart />
               </div>
               <MicroBarChart />
               <RDATable />
@@ -668,10 +677,10 @@ const Dashboard = () => {
             <section className="rounded-xl border border-border/40 bg-card/50 p-4 space-y-2">
               <h4 className="flex items-center gap-2 font-semibold text-foreground">
                 <span className="flex items-center justify-center h-5 w-5 rounded-full bg-primary/15 text-primary text-[10px] font-bold shrink-0">2</span>
-                Accuracy of Data
+                Food Data and Accuracy
               </h4>
               <p className="leading-relaxed">
-                While we strive to ensure the nutritional information in our database is accurate, food values may vary depending on brand, cooking method, and portions. User discretion is advised.
+                USDA FoodData Central supplies searchable food records. SR Legacy is the default source; Foundation, Survey (FNDDS), and Branded records may be available through alternate search. Values can differ by source, brand, preparation, and serving size. Custom foods and logged portions may be entered by users and are not independently verified by NutriTrack. Check product labels and confirm portions when accuracy matters.
               </p>
             </section>
 
@@ -679,10 +688,10 @@ const Dashboard = () => {
             <section className="rounded-xl border border-border/40 bg-card/50 p-4 space-y-2">
               <h4 className="flex items-center gap-2 font-semibold text-foreground">
                 <span className="flex items-center justify-center h-5 w-5 rounded-full bg-primary/15 text-primary text-[10px] font-bold shrink-0">3</span>
-                Account Responsibility
+                Accounts and User-Provided Information
               </h4>
               <p className="leading-relaxed">
-                If you create an account, you are responsible for maintaining the confidentiality of your login details. NutriTrack is not responsible for data loss due to compromised user accounts.
+                A signed-in account is required for the dashboard. Profile details, food logs, custom foods, and saved meals are associated with your account. Keep your sign-in credentials private, and review the accuracy of information and portions you enter.
               </p>
             </section>
 
@@ -690,34 +699,34 @@ const Dashboard = () => {
             <section className="rounded-xl border border-border/40 bg-card/50 p-4 space-y-3">
               <h4 className="flex items-center gap-2 font-semibold text-foreground">
                 <span className="flex items-center justify-center h-5 w-5 rounded-full bg-primary/15 text-primary text-[10px] font-bold shrink-0">4</span>
-                Nutrient RDA Evidence Basis
+                Nutrient Tracking and Estimated Targets
               </h4>
               <p className="leading-relaxed">
-                NutriTrack tracks 37 nutrient values: 6 core macros, 4 fat-profile values, 13 vitamins, 13 minerals, and choline. USDA reports vary by food and database; not every value is available for every item.
+                NutriTrack displays 37 tracked values: 6 core values, 4 fat-profile values, 13 vitamins, 13 minerals, and choline. Dietary cholesterol is shown separately as an informational value. Nutrient targets use established dietary reference values (including RDA, Adequate Intake, and applicable limits) where available; they are estimates for tracking, not individual prescriptions.
               </p>
               <div className="space-y-2.5 text-xs">
                 <div className="p-3 rounded-lg bg-primary/5 border border-primary/15">
                   <p className="font-semibold text-primary mb-1 flex items-center gap-1.5">
-                    <span className="text-sm">✅</span> RDA-based targets
+                    <span className="text-sm">✅</span> Profile-based estimates
                   </p>
-                  <p className="leading-relaxed">Calorie and macro targets use profile-based estimates. Vitamin and mineral targets use established dietary reference values where available.</p>
-                  <p className="mt-1.5 text-muted-foreground/80 italic">Personalised based on your age, gender, and life-stage.</p>
+                  <p className="leading-relaxed">Energy estimates use 2023 NASEM Estimated Energy Requirement equations and profile information such as age, sex, height, weight, and activity. Macro and micronutrient targets are derived from profile-based formulas and dietary reference values where available.</p>
+                  <p className="mt-1.5 text-muted-foreground/80 italic">Pregnancy and lactation use separate life-stage handling; estimates depend on the profile details provided.</p>
                 </div>
                 <div className="p-3 rounded-lg bg-amber-500/5 border border-amber-500/15 dark:bg-amber-400/5 dark:border-amber-400/15">
                   <p className="font-semibold text-amber-600 dark:text-amber-400 mb-1 flex items-center gap-1.5">
-                    <span className="text-sm">⚠️</span> Adequate Intake and limit values
+                    <span className="text-sm">⚠️</span> Optional target overrides
                   </p>
-                  <p className="leading-relaxed">Choline and ALA use Adequate Intakes. Saturated fat uses a calorie-based upper limit. These are reference values, not medical advice.</p>
+                  <p className="leading-relaxed">Eligible adults may edit calorie, protein, carbohydrate, fat, fiber, and total-sugar targets. These custom values replace the corresponding estimates in comparisons and reports; micronutrient targets remain profile-based. Custom core targets are unavailable for profiles under 19 and during pregnancy or lactation.</p>
                 </div>
                 <div className="p-3 rounded-lg bg-destructive/5 border border-destructive/15">
                   <p className="font-semibold text-destructive mb-1 flex items-center gap-1.5">
                     <span className="text-sm">ℹ️</span> Informational values
                   </p>
                   <div className="space-y-1.5 leading-relaxed">
-                    <p><strong>Mono- and polyunsaturated fat:</strong> displayed without a daily target.</p>
-                    <p><strong>Cholesterol:</strong> dietary milligrams are informational; there is no universal daily limit in current U.S. guidance.</p>
-                    <p><strong>Total sugar:</strong> the displayed reference is not an added-sugar limit.</p>
-                    <p><strong>Calories:</strong> Calculated via Mifflin-St Jeor / Schofield equations — an estimate, not absolute.</p>
+                    <p><strong>Choline and ALA:</strong> use Adequate Intake reference values where available.</p>
+                    <p><strong>Saturated fat:</strong> shown against a calorie-based reference limit; mono- and polyunsaturated fats have no daily target.</p>
+                    <p><strong>Cholesterol:</strong> shown as an informational amount without a daily target.</p>
+                    <p><strong>Total sugar:</strong> the reference is for total sugar, not an added-sugar limit.</p>
                   </div>
                 </div>
               </div>
@@ -727,14 +736,14 @@ const Dashboard = () => {
             <section className="rounded-xl border border-border/40 bg-card/50 p-4 space-y-2">
               <h4 className="flex items-center gap-2 font-semibold text-foreground">
                 <span className="flex items-center justify-center h-5 w-5 rounded-full bg-primary/15 text-primary text-[10px] font-bold shrink-0">5</span>
-                Nutrients with Limited Food Data
+                Nutrient Data Availability
               </h4>
               <p className="leading-relaxed">
-                USDA data coverage varies by food, source database, and nutrient; unreported values should not be interpreted as measured zeros.
+                USDA nutrient coverage varies by food, source database, and nutrient. Some USDA records do not report every tracked value; an absent value may display as zero in the app but is not a measured zero or proof of zero intake.
               </p>
               <ul className="space-y-1.5 ml-1 text-xs leading-relaxed">
-                <li className="flex gap-2"><span className="text-muted-foreground/50 select-none">•</span><span><strong>Fatty acids and choline</strong> — May be absent from older or abridged food records.</span></li>
-                <li className="flex gap-2"><span className="text-muted-foreground/50 select-none">•</span><span><strong>Chloride</strong> — Consumed as table salt; not directly reported by most databases.</span></li>
+                <li className="flex gap-2"><span className="text-muted-foreground/50 select-none">•</span><span><strong>Fatty acids and choline</strong> — May be absent from some older, abridged, or branded records.</span></li>
+                <li className="flex gap-2"><span className="text-muted-foreground/50 select-none">•</span><span><strong>Chloride</strong> — May not be reported for many foods, including foods containing salt.</span></li>
               </ul>
               <p className="text-[11px] text-muted-foreground/70 italic pt-1 border-t border-border/30">
                 Missing nutrient data is not evidence of deficiency or zero intake.

@@ -1,14 +1,12 @@
 import { useState, Fragment, useRef, useEffect } from "react";
 import { useNutrition } from "@/context/NutritionContext";
 import { Unit } from "@/data/foods";
-import { calcNutrition, DetailNutrientKey, formatNum, SelectedUnit, sumNutrition } from "@/lib/nutrition";
-import { Trash2, Plus, Minus, X, ChevronDown, Bookmark, Check } from "lucide-react";
+import { calcNutrition, DetailNutrientKey, formatNum, SelectedUnit, sumNutrition, SelectedFood } from "@/lib/nutrition";
+import { orderMealItems } from "@/lib/mealGroups";
+import { MealWrapControls } from "@/components/nutrition/MealWrapControls";
+import { Trash2, Plus, Minus, X, ChevronDown, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Slider } from "@/components/ui/slider";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 
 type NutrientCol = { key: DetailNutrientKey; label: string; unit: string };
@@ -56,16 +54,20 @@ function sliderRange(unit: SelectedUnit): { min: number; max: number; step: numb
 const UNITS: Unit[] = ["g", "kg", "ml", "pieces", "bowl", "serving"];
 
 export function FoodTable() {
-  const { selected, updateItem, removeItem, recentQuantities, clearAll, rda, saveMeal, logDay, totals } = useNutrition();
-  const [mealName, setMealName] = useState("");
+  const { selected, updateItem, removeItem, recentQuantities, clearAll, rda, logDay, totals, plateBusy } = useNutrition();
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const [deleteGroupId, setDeleteGroupId] = useState<string | null>(null);
+  const ordered = orderMealItems(selected);
+  const hasGroups = selected.some((item) => item.mealGroup);
+  const unlogged = selected.filter((item) => !item.loggedDate);
 
   const handleLogDay = async () => {
     try {
       await logDay();
-      const kcal = Math.round(totals.calories);
+      const kcal = Math.round(sumNutrition(unlogged).calories);
       toast({
-        title: "Day Logged!",
-        description: `Successfully logged today's intake of ${kcal} kcal to your history.`,
+        title: "Calories logged",
+        description: `Added ${kcal} kcal to history. Previously logged foods were not added again.`,
       });
     } catch (err) {
       console.error("Failed to log day:", err);
@@ -83,7 +85,6 @@ export function FoodTable() {
     window.addEventListener("resize", checkMobile);
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
-  const [saveMealOpen, setSaveMealOpen] = useState(false);
   const [hoveredUid, setHoveredUid] = useState<string | null>(null);
 
   const topScrollRef = useRef<HTMLDivElement>(null);
@@ -113,6 +114,24 @@ export function FoodTable() {
     p >= 100 ? "text-fiber" : p >= 70 ? "text-protein" : p >= 30 ? "text-carbs" : "text-muted-foreground";
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const toggle = (uid: string) => setExpanded((e) => ({ ...e, [uid]: !e[uid] }));
+  const fixedWidth = (isMobile ? 325 : 815) + (hasGroups ? 36 : 0);
+  const groupEdges = (index: number) => ({
+    first: !!ordered[index].mealGroup && ordered[index - 1]?.mealGroup?.id !== ordered[index].mealGroup?.id,
+    last: !!ordered[index].mealGroup && ordered[index + 1]?.mealGroup?.id !== ordered[index].mealGroup?.id,
+  });
+  const rowClass = (index: number) => {
+    const { first, last } = groupEdges(index);
+    return ordered[index].mealGroup
+      ? `bg-secondary/10 cursor-pointer ${first ? "border-t border-t-primary/50" : ""} ${last && !expanded[ordered[index].uid] ? "border-b border-b-primary/50" : ""}`
+      : "";
+  };
+  const rowHeight = (item: SelectedFood) => item.mealGroup &&
+    ordered.filter((member) => member.mealGroup?.id === item.mealGroup?.id).length === 1 && !expanded[item.uid] ? 96 : 56;
+  const openGroup = (event: React.MouseEvent, item: SelectedFood) => {
+    if (item.mealGroup && !(event.target as HTMLElement).closest("button, input, select, [role=slider]")) {
+      setActiveGroupId(item.mealGroup.id);
+    }
+  };
 
   if (selected.length === 0) {
     return (
@@ -126,105 +145,44 @@ export function FoodTable() {
 
   return (
     <div className="glass-card overflow-hidden">
-      <div className="flex items-center justify-between p-4 border-b border-border/60">
+      <div className="flex flex-wrap gap-3 items-center justify-between p-4 border-b border-border/60">
         <div>
           <h3 className="font-semibold">Selected Foods</h3>
           <p className="text-xs text-muted-foreground">{selected.length} items · edit quantities to recalc nutrition</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
-            disabled={selected.length === 0}
+            disabled={plateBusy || unlogged.length === 0}
             onClick={handleLogDay}
             className="text-xs font-semibold text-primary-foreground hover:opacity-90 flex items-center gap-1.5 gradient-primary disabled:opacity-50 disabled:pointer-events-none px-3.5 py-1.5 rounded-xl transition-all shadow-glow"
           >
             <Check className="h-3.5 w-3.5" /> Add Today's Calories
           </button>
 
-          <Dialog open={saveMealOpen} onOpenChange={setSaveMealOpen}>
-            <DialogTrigger asChild>
-              <button
-                disabled={selected.length === 0}
-                className="text-xs font-semibold text-primary hover:text-primary-glow flex items-center gap-1.5 bg-secondary/50 hover:bg-secondary disabled:opacity-50 disabled:pointer-events-none px-3 py-1.5 rounded-xl transition-all border border-border/20"
-              >
-                <Bookmark className="h-3.5 w-3.5" /> Save as Meal
-              </button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md rounded-3xl">
-              <DialogHeader>
-                <DialogTitle className="text-lg font-semibold">Save Plate as Custom Meal</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-3 py-2 text-sm">
-                <p className="text-xs text-muted-foreground">
-                  This combines all {selected.length} items on your plate into a custom named meal so you can search and log it instantly later.
-                </p>
-                <div className="space-y-1.5">
-                  <Label htmlFor="mealName" className="text-xs font-bold text-muted-foreground">Meal Name</Label>
-                  <Input
-                    id="mealName"
-                    value={mealName}
-                    onChange={(e) => setMealName(e.target.value)}
-                    placeholder="e.g. My Recovery Breakfast"
-                    className="rounded-xl h-10"
-                  />
-                </div>
-              </div>
-              <DialogFooter className="gap-2">
-                <Button variant="outline" onClick={() => setSaveMealOpen(false)} className="rounded-xl">Cancel</Button>
-                <Button
-                  onClick={() => {
-                    const nameToUse = mealName.trim() || `Meal ${new Date().toLocaleDateString()}`;
-                    saveMeal(nameToUse);
-                    setMealName("");
-                    setSaveMealOpen(false);
-                    toast({
-                      title: "Meal Saved!",
-                      description: `"${nameToUse}" has been added to your library and search bar.`,
-                    });
-                  }}
-                  className="rounded-xl gradient-primary text-primary-foreground"
-                >
-                  Save Meal
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <MealWrapControls activeGroupId={activeGroupId} onClose={() => setActiveGroupId(null)}
+            deleteGroupId={deleteGroupId} onDeleteClose={() => setDeleteGroupId(null)} />
 
-          <button onClick={clearAll} className="text-xs text-muted-foreground hover:text-destructive transition-colors flex items-center gap-1">
+          <button disabled={plateBusy} onClick={clearAll} className="text-xs text-muted-foreground hover:text-destructive transition-colors flex items-center gap-1">
             <X className="h-3.5 w-3.5" /> Clear all
           </button>
         </div>
       </div>
 
-      <div className="flex flex-col text-sm bg-card rounded-2xl overflow-hidden border border-border/40">
+      <div className="overflow-x-auto">
+      <div className="flex flex-col text-sm bg-card rounded-2xl overflow-hidden border border-border/40" style={{ minWidth: fixedWidth + 100 }}>
         {/* TOP SECTION: Headers and Food Rows */}
         <div className="flex items-stretch">
           {/* Top Left: Macros & Inputs (Fixed) */}
-          <div className={`flex-shrink-0 bg-card z-10 flex flex-col justify-between border-r border-border/40 ${isMobile ? "w-[325px]" : "w-[815px]"}`}>
-            <table className={`text-sm border-collapse table-fixed ${isMobile ? "w-[325px]" : "w-[815px]"}`}>
+          <div className="flex-shrink-0 bg-card z-10 flex flex-col justify-between border-r border-border/40" style={{ width: fixedWidth }}>
+            <table className="text-sm border-collapse table-fixed w-full">
               <colgroup>
-                {isMobile ? (
-                  <>
-                    <col style={{ width: "110px" }} /> {/* Food */}
-                    <col style={{ width: "95px" }} />  {/* Quantity */}
-                    <col style={{ width: "70px" }} />  {/* Unit */}
-                    <col style={{ width: "50px" }} />  {/* Cal */}
-                  </>
-                ) : (
-                  <>
-                    <col style={{ width: "200px" }} /> {/* Food */}
-                    <col style={{ width: "130px" }} /> {/* Quantity */}
-                    <col style={{ width: "85px" }} />  {/* Unit */}
-                    <col style={{ width: "60px" }} />  {/* Cal */}
-                    <col style={{ width: "65px" }} />  {/* Protein */}
-                    <col style={{ width: "65px" }} />  {/* Carbs */}
-                    <col style={{ width: "65px" }} />  {/* Fat */}
-                    <col style={{ width: "65px" }} />  {/* Fiber */}
-                    <col style={{ width: "80px" }} />  {/* Sugar */}
-                  </>
-                )}
+                {[...(hasGroups ? [36] : []), ...(isMobile ? [110, 95, 70, 50] : [200, 130, 85, 60, 65, 65, 65, 65, 80])].map((width, index) => (
+                  <col key={`${width}-${index}`} style={{ width: `${width}px` }} />
+                ))}
               </colgroup>
               <thead>
                 <tr className="text-xs text-muted-foreground bg-muted/40 h-[52px]">
+                  {hasGroups && <th aria-label="Meal" />}
                   <th className="text-left px-4 h-[52px] align-middle py-0 font-medium">Food</th>
                   <th className="text-left px-2 h-[52px] align-middle py-0 font-medium">Quantity</th>
                   {isMobile ? (
@@ -247,7 +205,7 @@ export function FoodTable() {
               </thead>
               <tbody>
                 <AnimatePresence initial={false}>
-                  {selected.map((item) => {
+                  {ordered.map((item, index) => {
                     const n = calcNutrition(item.food, item.quantity, item.unit, item.portion);
                     const step = item.unit === "pieces" || item.unit === "bowl" || item.unit === "serving" || item.unit === "portion" ? 0.5 : 10;
                     const portionOptions = item.food.portions ?? [];
@@ -273,11 +231,32 @@ export function FoodTable() {
                           initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -20 }}
                           onMouseEnter={() => setHoveredUid(item.uid)}
                           onMouseLeave={() => setHoveredUid(null)}
-                          className={`border-t border-border/40 transition-colors h-[56px] ${hoveredUid === item.uid ? "bg-secondary/40" : ""}`}
+                          onClick={(event) => openGroup(event, item)}
+                          style={{ height: rowHeight(item) }}
+                          className={`border-t border-border/40 transition-colors h-[56px] ${rowClass(index)} ${hoveredUid === item.uid ? "bg-secondary/40" : ""}`}
                         >
+                          {hasGroups && (groupEdges(index).first ? (
+                            <td rowSpan={ordered.filter((member) => member.mealGroup?.id === item.mealGroup?.id)
+                              .reduce((count, member) => count + 1 + (expanded[member.uid] ? 1 : 0), 0)}
+                              className="relative border border-primary/50 bg-secondary/20 align-middle text-center">
+                              <div className="absolute inset-0 flex flex-col items-center gap-1 py-1 overflow-hidden">
+                                <button aria-label={`Delete ${item.mealGroup!.name}`} title={`Delete ${item.mealGroup!.name}`} disabled={plateBusy}
+                                  onClick={() => setDeleteGroupId(item.mealGroup!.id)}
+                                  className="text-red-400 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 p-1">
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                                <button onClick={() => setActiveGroupId(item.mealGroup!.id)}
+                                  aria-label={`Actions for ${item.mealGroup!.name}`}
+                                  className="text-xs font-semibold text-primary min-h-0 flex-1 max-h-40 truncate"
+                                  style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>
+                                  {item.mealGroup!.name}{item.loggedDate ? " · Logged" : ""}
+                                </button>
+                              </div>
+                            </td>
+                          ) : !item.mealGroup ? <td /> : null)}
                           <td className="px-2 h-[56px] align-middle py-0">
                             <div className="flex items-center gap-1.5 min-w-0">
-                              <button onClick={() => toggle(item.uid)}
+                              <button aria-label={`Adjust portion for ${item.food.name}`} onClick={() => toggle(item.uid)}
                                 className="h-6 w-6 flex-shrink-0 grid place-items-center rounded-md hover:bg-secondary transition-colors">
                                 <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded[item.uid] ? "rotate-180" : ""}`} />
                               </button>
@@ -292,13 +271,13 @@ export function FoodTable() {
                           </td>
                           <td className="px-2 h-[56px] align-middle py-0">
                             <div className={`flex items-center ${isMobile ? "gap-0.5" : "gap-1"}`}>
-                              <button onClick={() => incBy(-step)} className={`${isMobile ? "h-6 w-6" : "h-7 w-7"} grid place-items-center rounded-lg bg-secondary hover:bg-muted`}>
+                              <button disabled={plateBusy || !!item.loggedDate} onClick={() => incBy(-step)} className={`${isMobile ? "h-6 w-6" : "h-7 w-7"} grid place-items-center rounded-lg bg-secondary hover:bg-muted disabled:opacity-40`}>
                                 <Minus className="h-3.5 w-3.5" />
                               </button>
-                              <input type="number" min={0} step={0.1} value={item.quantity}
+                              <input disabled={plateBusy || !!item.loggedDate} type="number" min={0} step={0.1} value={item.quantity}
                                 onChange={(e) => updateItem(item.uid, { quantity: parseFloat(e.target.value) || 0 })}
                                 className={`${isMobile ? "w-10 h-7 text-xs px-1" : "w-16 h-8 px-2 text-sm"} rounded-lg bg-background border border-border text-center outline-none focus:border-primary`} />
-                              <button onClick={() => incBy(step)} className={`${isMobile ? "h-6 w-6" : "h-7 w-7"} grid place-items-center rounded-lg bg-secondary hover:bg-muted`}>
+                              <button disabled={plateBusy || !!item.loggedDate} onClick={() => incBy(step)} className={`${isMobile ? "h-6 w-6" : "h-7 w-7"} grid place-items-center rounded-lg bg-secondary hover:bg-muted disabled:opacity-40`}>
                                 <Plus className="h-3.5 w-3.5" />
                               </button>
                             </div>
@@ -306,7 +285,7 @@ export function FoodTable() {
                           {isMobile ? (
                             <>
                               <td className="px-1 h-[56px] align-middle py-0">
-                                <select value={unitSelectValue} onChange={(e) => handleUnitChange(e.target.value)}
+                                <select disabled={plateBusy || !!item.loggedDate} value={unitSelectValue} onChange={(e) => handleUnitChange(e.target.value)}
                                   title={item.portion ? `${item.portion.label} (${item.portion.gramWeight} g)` : item.food.servingSize}
                                   className="h-7 w-full max-w-[60px] min-w-0 truncate overflow-hidden text-ellipsis whitespace-nowrap px-1 rounded-lg bg-background border border-border text-[10px] outline-none focus:border-primary">
                                   <option value={item.food.baseUnit}>{item.food.baseUnit}</option>
@@ -322,7 +301,7 @@ export function FoodTable() {
                           ) : (
                             <>
                               <td className="px-2 h-[56px] align-middle py-0">
-                                <select value={unitSelectValue} onChange={(e) => handleUnitChange(e.target.value)}
+                                <select disabled={plateBusy || !!item.loggedDate} value={unitSelectValue} onChange={(e) => handleUnitChange(e.target.value)}
                                   title={item.portion ? `${item.portion.label} (${item.portion.gramWeight} g)` : item.food.servingSize}
                                   className="h-8 w-[68px] max-w-[68px] min-w-0 truncate overflow-hidden text-ellipsis whitespace-nowrap px-1 rounded-lg bg-background border border-border text-xs outline-none focus:border-primary">
                                   <option value={item.food.baseUnit}>{item.food.baseUnit}</option>
@@ -350,13 +329,15 @@ export function FoodTable() {
                             return (
                               <motion.tr key={item.uid + "-exp"}
                                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                className="bg-secondary/20 border-t border-border/30 h-[92px]">
+                                className={`bg-secondary/20 border-t border-border/30 h-[92px] ${groupEdges(index).last ? "border-b border-b-primary/50" : ""}`}>
+                                {hasGroups && !item.mealGroup && <td />}
                                 <td colSpan={isMobile ? 4 : 9} className="px-6 py-3 h-[92px] align-middle">
                                   <div className="flex items-center gap-4">
                                     <div className="text-xs text-muted-foreground whitespace-nowrap">
                                       Adjust portion
                                     </div>
                                     <Slider
+                                      disabled={plateBusy || !!item.loggedDate}
                                       value={[item.quantity]}
                                       min={r.min}
                                       max={sliderMax}
@@ -444,7 +425,7 @@ export function FoodTable() {
               </thead>
               <tbody>
                 <AnimatePresence initial={false}>
-                  {selected.map((item) => {
+                  {ordered.map((item, index) => {
                     const n = calcNutrition(item.food, item.quantity, item.unit, item.portion);
                     return (
                       <Fragment key={item.uid}>
@@ -452,7 +433,9 @@ export function FoodTable() {
                           initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: 20 }}
                           onMouseEnter={() => setHoveredUid(item.uid)}
                           onMouseLeave={() => setHoveredUid(null)}
-                          className={`border-t border-border/40 transition-colors h-[56px] ${hoveredUid === item.uid ? "bg-secondary/40" : ""}`}
+                          onClick={(event) => openGroup(event, item)}
+                          style={{ height: rowHeight(item) }}
+                          className={`border-t border-border/40 transition-colors h-[56px] ${rowClass(index)} ${hoveredUid === item.uid ? "bg-secondary/40" : ""}`}
                         >
                           {isMobile && (
                             <>
@@ -466,8 +449,8 @@ export function FoodTable() {
                           {DETAIL_COLS.map((c, idx) => (
                             <td key={c.key} className={`px-2 h-[56px] align-middle py-0 text-right tabular-nums ${(idx === 0 && !isMobile) ? "pl-4" : ""}`}>{formatNum(n[c.key])}</td>
                           ))}
-                          <td className="px-4 h-[56px] align-middle py-0 text-center">
-                            <button onClick={() => removeItem(item.uid)} className="h-7 w-7 grid place-items-center rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10">
+                          <td className={`px-4 h-[56px] align-middle py-0 text-center ${item.mealGroup ? "border-r border-r-primary/50" : ""}`}>
+                            <button disabled={plateBusy || !!item.loggedDate} aria-label={`Remove ${item.food.name}`} onClick={() => removeItem(item.uid)} className="h-7 w-7 grid place-items-center rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 disabled:opacity-30">
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
                           </td>
@@ -477,7 +460,7 @@ export function FoodTable() {
                           {expanded[item.uid] && (
                             <motion.tr key={item.uid + "-exp"}
                               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                              className="bg-secondary/20 border-t border-border/30 h-[92px]">
+                              className={`bg-secondary/20 border-t border-border/30 h-[92px] ${groupEdges(index).last ? "border-b border-b-primary/50" : ""} ${item.mealGroup ? "border-r border-r-primary/50" : ""}`}>
                               <td colSpan={(isMobile ? 5 : 0) + DETAIL_COLS.length + 1} className="h-[92px]"></td>
                             </motion.tr>
                           )}
@@ -494,32 +477,16 @@ export function FoodTable() {
         {/* BOTTOM SECTION: Footer / Totals */}
         <div className="flex items-stretch">
           {/* Bottom Left: Macros & Inputs Totals */}
-          <div className={`flex-shrink-0 bg-card z-10 border-r border-border/40 ${isMobile ? "w-[325px]" : "w-[815px]"}`}>
-            <table className={`text-sm border-collapse table-fixed ${isMobile ? "w-[325px]" : "w-[815px]"}`}>
+          <div className="flex-shrink-0 bg-card z-10 border-r border-border/40" style={{ width: fixedWidth }}>
+            <table className="text-sm border-collapse table-fixed w-full">
               <colgroup>
-                {isMobile ? (
-                  <>
-                    <col style={{ width: "110px" }} /> {/* Food */}
-                    <col style={{ width: "95px" }} />  {/* Quantity */}
-                    <col style={{ width: "70px" }} />  {/* Unit */}
-                    <col style={{ width: "50px" }} />  {/* Cal */}
-                  </>
-                ) : (
-                  <>
-                    <col style={{ width: "200px" }} /> {/* Food */}
-                    <col style={{ width: "130px" }} /> {/* Quantity */}
-                    <col style={{ width: "85px" }} />  {/* Unit */}
-                    <col style={{ width: "60px" }} />  {/* Cal */}
-                    <col style={{ width: "65px" }} />  {/* Protein */}
-                    <col style={{ width: "65px" }} />  {/* Carbs */}
-                    <col style={{ width: "65px" }} />  {/* Fat */}
-                    <col style={{ width: "65px" }} />  {/* Fiber */}
-                    <col style={{ width: "80px" }} />  {/* Sugar */}
-                  </>
-                )}
+                {[...(hasGroups ? [36] : []), ...(isMobile ? [110, 95, 70, 50] : [200, 130, 85, 60, 65, 65, 65, 65, 80])].map((width, index) => (
+                  <col key={`${width}-${index}`} style={{ width: `${width}px` }} />
+                ))}
               </colgroup>
               <tfoot className="text-xs">
                 <tr className="bg-muted/30 font-semibold h-[40px]">
+                  {hasGroups && <td />}
                   <td className="px-4 h-[40px] align-middle py-0">Total</td>
                   <td colSpan={2} className="h-[40px] align-middle py-0"></td>
                   {isMobile ? (
@@ -536,6 +503,7 @@ export function FoodTable() {
                   )}
                 </tr>
                 <tr className="bg-muted/20 text-muted-foreground h-[40px]">
+                  {hasGroups && <td />}
                   <td className="px-4 h-[40px] align-middle py-0">Target / limit</td>
                   <td colSpan={2} className="h-[40px] align-middle py-0"></td>
                   {isMobile ? (
@@ -552,6 +520,7 @@ export function FoodTable() {
                   )}
                 </tr>
                 <tr className="bg-muted/30 font-medium h-[40px]">
+                  {hasGroups && <td />}
                   <td className="px-4 h-[40px] align-middle py-0">% Completed</td>
                   <td colSpan={2} className="h-[40px] align-middle py-0"></td>
                   {isMobile ? (
@@ -645,6 +614,7 @@ export function FoodTable() {
                 </tr>
               </tfoot>
             </table>
+          </div>
           </div>
         </div>
       </div>

@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
+import { getErrorCode, getErrorMessage } from "@/lib/errorDetails";
 import { Loader2, LogIn, Mail, ShieldAlert } from "lucide-react";
 
 interface AuthDialogProps {
@@ -94,17 +95,18 @@ export function AuthDialog({ trigger, open, onOpenChange }: AuthDialogProps) {
         toast({ title: "Account created!", description: "You are now signed up and logged in." });
         setIsOpen(false);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       let errMsg = "An unexpected error occurred.";
-      if (err.code === "auth/user-not-found" || err.code === "auth/wrong-password" || err.code === "auth/invalid-credential") {
+      const code = getErrorCode(err);
+      if (code === "auth/user-not-found" || code === "auth/wrong-password" || code === "auth/invalid-credential") {
         errMsg = "Invalid credentials. If you previously signed up with Google, please use the main Login page to sign in with Google.";
-      } else if (err.code === "auth/email-already-in-use") {
+      } else if (code === "auth/email-already-in-use") {
         errMsg = "An account with this email already exists. Try signing in with your password, or use Google Sign-in on the main Login page.";
-      } else if (err.code === "auth/invalid-email") {
+      } else if (code === "auth/invalid-email") {
         errMsg = "Please enter a valid email address.";
-      } else if (err.message) {
-        errMsg = err.message;
+      } else {
+        errMsg = getErrorMessage(err) ?? errMsg;
       }
       toast({
         title: "Authentication failed",

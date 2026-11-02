@@ -1,8 +1,10 @@
-import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, ReactNode } from "react";
 import { toast } from "@/hooks/use-toast";
 import { applyCoreTargetOverrides, CoreTargetOverrides, Food, FoodPortion, Unit, RDA, computeRDA, RDA_DEFAULT } from "@/data/foods";
 import { SelectedFood, sumNutrition, emptyTotals } from "@/lib/nutrition";
 import { auth as fbAuth, db as fbDb, isFirebaseConfigured } from "@/lib/firebase";
+import { format, isValid, parseISO } from "date-fns";
+import { addToDailyEntry, mealTemplateItems, unloggedMealItems, wrapMealItems } from "@/lib/mealGroups";
 import {
   doc,
   setDoc,
@@ -10,7 +12,8 @@ import {
   collection,
   getDocs,
   deleteDoc,
-  onSnapshot
+  onSnapshot,
+  runTransaction
 } from "firebase/firestore";
 import {
   signInWithEmailAndPassword,
@@ -41,6 +44,15 @@ interface Profile {
   customTargets?: CoreTargetOverrides;
 }
 
+interface FirebaseSettingsPatch {
+  profile?: Profile;
+  waterIntake?: number;
+  waterGoal?: number;
+  selected?: SelectedFood[];
+  recentFoods?: Food[];
+  recentQuantities?: number[];
+}
+
 export interface SavedMeal {
   id: string;
   name: string;
@@ -54,9 +66,14 @@ interface DailyEntry {
   itemCount: number;
 }
 
+export interface WeightEntry {
+  date: string;
+  weight: number;
+}
+
 interface Ctx {
   selected: SelectedFood[];
-  addFood: (food: Food) => void;
+  addFood: (food: Food, groupId?: string | null) => Promise<void>;
   updateItem: (uid: string, patch: Partial<Pick<SelectedFood, "quantity" | "unit" | "portion">>) => void;
   removeItem: (uid: string) => void;
   clearAll: () => void;
@@ -65,15 +82,24 @@ interface Ctx {
   profile: Profile;
   setProfile: (p: Profile) => void;
   savedMeals: SavedMeal[];
-  saveMeal: (name: string) => void;
-  loadMeal: (id: string) => void;
-  loadMealToPlate: (meal: SavedMeal) => void;
+  saveMeal: (name: string, items?: SelectedFood[]) => Promise<void>;
+  loadMeal: (id: string) => Promise<string>;
+  loadMealToPlate: (meal: SavedMeal, groupId?: string | null) => Promise<string>;
+  wrapMeal: (name: string) => Promise<void>;
+  unwrapMeal: (id: string) => Promise<void>;
+  deleteWrappedMeal: (id: string) => Promise<void>;
+  logWrappedMeal: (id?: string) => Promise<void>;
+  plateBusy: boolean;
+  addingToMeal: string | null;
+  setAddingToMeal: (id: string | null) => void;
   deleteMeal: (id: string) => void;
   recentFoods: Food[];
   recentQuantities: number[];
   logDay: (customTotals?: ReturnType<typeof sumNutrition>, customCount?: number, targetDate?: string) => Promise<void>;
   updateLogCalories: (date: string, calories: number) => Promise<void>;
   history: DailyEntry[];
+  weightHistory: WeightEntry[];
+  saveWeightEntry: (date: string, weight: number) => Promise<void>;
   theme: "light" | "dark";
   toggleTheme: () => void;
   
@@ -136,11 +162,17 @@ function save(k: string, v: unknown) {
 export function NutritionProvider({ children }: { children: ReactNode }) {
   // Local states
   const [selected, setSelected] = useState<SelectedFood[]>([]);
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+  const plateLock = useRef(false);
+  const [plateBusy, setPlateBusy] = useState(false);
+  const [addingToMeal, setAddingToMeal] = useState<string | null>(null);
   const [profile, setProfileState] = useState<Profile>({ name: "", age: 28, gender: "male", weight: 70, height: 175, activityLevel: 1.375, goal: "maintain" });
   const [savedMeals, setSavedMeals] = useState<SavedMeal[]>([]);
   const [recentFoods, setRecentFoods] = useState<Food[]>([]);
   const [recentQuantities, setRecentQuantities] = useState<number[]>([50, 100, 150, 200]);
   const [history, setHistory] = useState<DailyEntry[]>([]);
+  const [weightHistory, setWeightHistory] = useState<WeightEntry[]>([]);
   const [theme, setTheme] = useState<"light" | "dark">(() => load("theme", "light"));
   const [customFoods, setCustomFoods] = useState<Food[]>([]);
   const [waterIntake, setWaterIntake] = useState<number>(0);
@@ -158,7 +190,7 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
 
   // Helper to update Firebase settings
-  const updateFirebaseSettings = async (patch: any) => {
+  const updateFirebaseSettings = async (patch: FirebaseSettingsPatch) => {
     if (user && fbDb) {
       const userRef = doc(fbDb, "users", user.uid, "profile", "settings");
       await setDoc(userRef, patch, { merge: true });
@@ -227,11 +259,13 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
       } else {
         setIsAdmin(false);
         setSelected([]);
+        setAddingToMeal(null);
         setProfileState({ name: "", age: 28, gender: "male", weight: 70, height: 175, activityLevel: 1.375, goal: "maintain" });
         setSavedMeals([]);
         setRecentFoods([]);
         setRecentQuantities([50, 100, 150, 200]);
         setHistory([]);
+        setWeightHistory([]);
         setCustomFoods([]);
         setWaterIntake(0);
         setWaterGoalState(2000);
@@ -244,6 +278,7 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
 
   // Real-time Firestore sync for logged-in user
   useEffect(() => {
+    setWeightHistory([]);
     if (!user || !fbDb) return;
 
     // 1. Settings listener
@@ -287,11 +322,22 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
       setHistory(list);
     });
 
+    const weightRef = collection(fbDb, "users", user.uid, "weight_logs");
+    const unsubWeight = onSnapshot(weightRef, (snapshot) => {
+      const list = snapshot.docs.map((entry) => entry.data() as WeightEntry);
+      list.sort((a, b) => a.date.localeCompare(b.date));
+      setWeightHistory(list);
+    }, (error) => {
+      console.error("Failed to load weight history:", error);
+      toast({ title: "Unable to load weight history", description: "Please reload and try again.", variant: "destructive" });
+    });
+
     return () => {
       unsubSettings();
       unsubMeals();
       unsubCustom();
       unsubHistory();
+      unsubWeight();
     };
   }, [user]);
 
@@ -327,6 +373,7 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
     setSelected((prev) => {
       let changed = false;
       const next = prev.map((item) => {
+        if (item.loggedDate) return item;
         const latest = findLatestFood(item.food.id);
         if (latest && JSON.stringify(latest) !== JSON.stringify(item.food)) {
           changed = true;
@@ -412,7 +459,7 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
       // On success, reset rate limit counters
       localStorage.removeItem("nutritrack:login:failed_attempts");
       localStorage.removeItem("nutritrack:login:lockout_until");
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Increment failed attempts on credential/auth failures
       const currentAttemptsRaw = localStorage.getItem("nutritrack:login:failed_attempts");
       const currentAttempts = currentAttemptsRaw ? parseInt(currentAttemptsRaw, 10) : 0;
@@ -475,108 +522,119 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
     await setDoc(doc(fbDb, "global_foods", food.id), food);
   };
 
-  // State modifying functions
-  const addFood = async (food: Food) => {
-    // Prevent adding the same food item multiple times
-    const existing = selected.find((item) => item.food.id === food.id);
-    if (existing) {
-      toast({
-        title: "Food Already Added",
-        description: `"${food.name}" is already on your plate. You can adjust its quantity directly in the table below.`,
-        variant: "destructive"
-      });
-      return;
-    }
+  const reportPlateError = (error: unknown) => {
+    console.error("Plate update failed:", error);
+    toast({ title: "Plate update failed", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+  };
 
-    const newItem: SelectedFood = {
-      uid: `${food.id}-${Date.now()}`,
-      food,
-      quantity: food.baseUnit === "pieces" ? 1 : food.baseQuantity,
-      unit: food.baseUnit,
-    };
-    const newSelected = [...selected, newItem];
-    const prevSelected = selected;
-
-    setSelected(newSelected);
-    setRecentFoods((r) => [food, ...r.filter((f) => f.id !== food.id)].slice(0, 8));
-
-    if (user && fbDb) {
-      try {
-        await updateFirebaseSettings({ selected: newSelected });
-      } catch (err) {
-        setSelected(prevSelected);
-        console.error("Failed to sync food selection with Firebase:", err);
+  // Read and write the plate transactionally so another tab cannot overwrite a logged marker.
+  const changePlate = async (change: (items: SelectedFood[]) => SelectedFood[]) => {
+    if (plateLock.current) throw new Error("Please wait for the current plate update.");
+    plateLock.current = true;
+    setPlateBusy(true);
+    try {
+      let next: SelectedFood[];
+      if (user && fbDb) {
+        const settingsRef = doc(fbDb, "users", user.uid, "profile", "settings");
+        next = await runTransaction(fbDb, async (transaction) => {
+          const settings = await transaction.get(settingsRef);
+          const items: SelectedFood[] = settings.data()?.selected ?? [];
+          const updated = change(items);
+          transaction.set(settingsRef, { selected: updated }, { merge: true });
+          return updated;
+        });
+      } else {
+        next = change(selectedRef.current);
       }
+      selectedRef.current = next;
+      setSelected(next);
+    } finally {
+      plateLock.current = false;
+      setPlateBusy(false);
     }
   };
 
-  const updateItem: Ctx["updateItem"] = async (uid, patch) => {
-    const newSelected = selected.map((it) => {
-      if (it.uid !== uid) return it;
-      const updated = { ...it, ...patch };
+  const getEditableGroup = (items: SelectedFood[], id: string) => {
+    const members = items.filter((item) => item.mealGroup?.id === id);
+    if (!members.length) throw new Error("This meal is no longer on your plate.");
+    if (members.some((item) => item.loggedDate)) throw new Error("Logged meals cannot be edited. Add foods outside this meal instead.");
+    return members[0].mealGroup!;
+  };
+
+  const addFood: Ctx["addFood"] = async (food, groupId = addingToMeal) => {
+    const uid = crypto.randomUUID();
+    await changePlate((items) => {
+      const group = groupId ? getEditableGroup(items, groupId) : undefined;
+      if (items.some((item) => item.food.id === food.id && !item.loggedDate && (item.mealGroup?.id ?? null) === (groupId ?? null))) {
+        throw new Error(`"${food.name}" is already here. Adjust its quantity, or add it to another meal.`);
+      }
+      const item: SelectedFood = {
+        uid, food, quantity: food.baseUnit === "pieces" ? 1 : food.baseQuantity, unit: food.baseUnit,
+        ...(group ? { mealGroup: group } : {}),
+      };
+      return [...items, item];
+    });
+    setRecentFoods((r) => [food, ...r.filter((f) => f.id !== food.id)].slice(0, 8));
+  };
+
+  const updateItem: Ctx["updateItem"] = (uid, patch) => {
+    void changePlate((items) => items.map((item) => {
+      if (item.uid !== uid) return item;
+      if (item.loggedDate) throw new Error("Logged foods are read-only to keep recorded calories unchanged.");
+      const updated = { ...item, ...patch };
       if (patch.unit && patch.unit !== "portion") delete updated.portion;
       return updated;
+    })).then(async () => {
+      if (patch.quantity && Number.isFinite(patch.quantity)) {
+        const next = Array.from(new Set([patch.quantity, ...recentQuantities])).slice(0, 6);
+        await updateFirebaseSettings({ recentQuantities: next });
+        setRecentQuantities(next);
+      }
+    }).catch(reportPlateError);
+  };
+
+  const removeItem = (uid: string) => {
+    void changePlate((items) => {
+      if (items.find((item) => item.uid === uid)?.loggedDate) throw new Error("Delete the logged wrap instead; its recorded calories will stay in history.");
+      return items.filter((item) => item.uid !== uid);
+    }).catch(reportPlateError);
+  };
+
+  const clearAll = () => {
+    void changePlate(() => []).then(() => setAddingToMeal(null)).catch(reportPlateError);
+  };
+
+  const wrapMeal = async (name: string) => {
+    const id = crypto.randomUUID();
+    await changePlate((items) => wrapMealItems(items, id, name));
+  };
+
+  const unwrapMeal = async (id: string) => {
+    await changePlate((items) => {
+      if (!items.some((item) => item.mealGroup?.id === id)) throw new Error("This meal is no longer on your plate.");
+      return items.map((item) => {
+        if (item.mealGroup?.id !== id) return item;
+        const { mealGroup, ...unwrapped } = item;
+        return unwrapped;
+      });
     });
-    let nextQty = recentQuantities;
-    if (patch.quantity && Number.isFinite(patch.quantity)) {
-      nextQty = Array.from(new Set([patch.quantity!, ...recentQuantities])).slice(0, 6);
-    }
-
-    const prevSelected = selected;
-    const prevRecentQuantities = recentQuantities;
-
-    setSelected(newSelected);
-    if (patch.quantity && Number.isFinite(patch.quantity)) {
-      setRecentQuantities(nextQty);
-    }
-
-    if (user && fbDb) {
-      try {
-        await updateFirebaseSettings({ selected: newSelected, recentQuantities: nextQty });
-      } catch (err) {
-        setSelected(prevSelected);
-        setRecentQuantities(prevRecentQuantities);
-        console.error("Failed to update item in Firebase:", err);
-      }
-    }
+    setAddingToMeal(null);
   };
 
-  const removeItem = async (uid: string) => {
-    const newSelected = selected.filter((it) => it.uid !== uid);
-    const prevSelected = selected;
-
-    setSelected(newSelected);
-
-    if (user && fbDb) {
-      try {
-        await updateFirebaseSettings({ selected: newSelected });
-      } catch (err) {
-        setSelected(prevSelected);
-        console.error("Failed to remove item in Firebase:", err);
-      }
-    }
+  const deleteWrappedMeal = async (id: string) => {
+    await changePlate((items) => {
+      if (!items.some((item) => item.mealGroup?.id === id)) throw new Error("This meal is no longer on your plate.");
+      return items.filter((item) => item.mealGroup?.id !== id);
+    });
+    if (addingToMeal === id) setAddingToMeal(null);
   };
 
-  const clearAll = async () => {
-    const prevSelected = selected;
-    setSelected([]);
-
-    if (user && fbDb) {
-      try {
-        await updateFirebaseSettings({ selected: [] });
-      } catch (err) {
-        setSelected(prevSelected);
-        console.error("Failed to clear selection in Firebase:", err);
-      }
-    }
-  };
-
-  const saveMeal = async (name: string) => {
-    if (!name.trim() || selected.length === 0) return;
+  const saveMeal = async (name: string, items = selected) => {
+    if (!name.trim() || items.length === 0) throw new Error("Enter a meal name and add at least one food.");
     const newMeal: SavedMeal = {
-      id: `meal-${Date.now()}`,
-      name,
-      items: selected,
+      id: `meal-${crypto.randomUUID()}`,
+      name: name.trim(),
+      items: mealTemplateItems(items),
       savedAt: new Date().toISOString()
     };
 
@@ -587,33 +645,22 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const loadMeal = async (id: string) => {
-    const m = savedMeals.find((x) => x.id === id);
-    if (m) {
-      const loadedSelected = m.items.map((it) => ({
-        ...it,
-        uid: `${it.food.id}-${Date.now()}-${Math.random()}`
-      }));
-      if (user && fbDb) {
-        await updateFirebaseSettings({ selected: loadedSelected });
-      } else {
-        setSelected(loadedSelected);
-      }
-    }
+  const loadMealToPlate: Ctx["loadMealToPlate"] = async (meal, groupId = addingToMeal) => {
+    const id = groupId ?? crypto.randomUUID();
+    const template = mealTemplateItems(meal.items);
+    if (!template.length) throw new Error("This saved meal has no foods to add.");
+    const loaded = template.map((item) => ({ ...item, uid: crypto.randomUUID() }));
+    await changePlate((items) => {
+      const group = groupId ? getEditableGroup(items, groupId) : { id, name: meal.name };
+      return [...items, ...loaded.map((item) => ({ ...item, mealGroup: group }))];
+    });
+    return id;
   };
 
-  const loadMealToPlate = async (meal: SavedMeal) => {
-    const loaded = meal.items.map((it) => ({
-      ...it,
-      uid: `${it.food.id}-${Date.now()}-${Math.random()}`
-    }));
-    const newSelected = [...selected, ...loaded];
-
-    if (user && fbDb) {
-      await updateFirebaseSettings({ selected: newSelected });
-    } else {
-      setSelected(newSelected);
-    }
+  const loadMeal = async (id: string) => {
+    const meal = savedMeals.find((item) => item.id === id);
+    if (!meal) throw new Error("This saved meal is no longer available.");
+    return loadMealToPlate(meal, null);
   };
 
   const deleteMeal = async (id: string) => {
@@ -633,37 +680,61 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
   };
 
   const logDay = async (customTotals?: ReturnType<typeof sumNutrition>, customCount?: number, targetDate?: string) => {
+    if (!customTotals) return logWrappedMeal();
     const today = targetDate || getLocalDateStr();
-    const currentTotals = customTotals ?? totals;
+    const currentTotals = customTotals;
     const currentCount = customCount ?? selected.length;
-
-    // Find any existing entry for today and accumulate onto it
-    const existing = history.find((h) => h.date === today);
-    let mergedTotals: ReturnType<typeof sumNutrition>;
-    let mergedCount: number;
-
-    if (existing) {
-      // Add current plate totals to the already-logged totals
-      const merged = { ...existing.totals } as Record<string, number>;
-      (Object.keys(currentTotals) as (keyof typeof currentTotals)[]).forEach((k) => {
-        merged[k as string] = (merged[k as string] ?? 0) + (currentTotals[k] as number);
-      });
-      mergedTotals = merged as ReturnType<typeof sumNutrition>;
-      mergedCount = existing.itemCount + currentCount;
-    } else {
-      mergedTotals = currentTotals;
-      mergedCount = currentCount;
-    }
-
-    const newEntry = { date: today, totals: mergedTotals, itemCount: mergedCount };
-
     if (user && fbDb) {
-      await setDoc(doc(fbDb, "users", user.uid, "daily_logs", today), newEntry);
+      const logRef = doc(fbDb, "users", user.uid, "daily_logs", today);
+      await runTransaction(fbDb, async (transaction) => {
+        const log = await transaction.get(logRef);
+        transaction.set(logRef, addToDailyEntry(log.data() as DailyEntry | undefined, currentTotals, currentCount, today));
+      });
     } else {
       setHistory((h) => {
-        const others = h.filter((d) => d.date !== today);
-        return [...others, newEntry].sort((a, b) => a.date.localeCompare(b.date)).slice(-14);
+        const next = addToDailyEntry(h.find((entry) => entry.date === today), currentTotals, currentCount, today);
+        return [...h.filter((entry) => entry.date !== today), next].sort((a, b) => a.date.localeCompare(b.date));
       });
+    }
+  };
+
+  const logWrappedMeal = async (id?: string) => {
+    if (plateLock.current) throw new Error("Please wait for the current plate update.");
+    plateLock.current = true;
+    setPlateBusy(true);
+    const date = getLocalDateStr();
+    const prepareLog = (items: SelectedFood[], existing?: DailyEntry) => {
+      const eligible = unloggedMealItems(items, id);
+      const ids = new Set(eligible.map((item) => item.uid));
+      return {
+        items: items.map((item) => ids.has(item.uid) ? { ...item, loggedDate: date } : item),
+        entry: addToDailyEntry(existing, sumNutrition(eligible), eligible.length, date),
+      };
+    };
+    try {
+      let next: SelectedFood[];
+      if (user && fbDb) {
+        const settingsRef = doc(fbDb, "users", user.uid, "profile", "settings");
+        const logRef = doc(fbDb, "users", user.uid, "daily_logs", date);
+        next = await runTransaction(fbDb, async (transaction) => {
+          const settings = await transaction.get(settingsRef);
+          const log = await transaction.get(logRef);
+          const result = prepareLog(settings.data()?.selected ?? [], log.data() as DailyEntry | undefined);
+          transaction.set(settingsRef, { selected: result.items }, { merge: true });
+          transaction.set(logRef, result.entry);
+          return result.items;
+        });
+      } else {
+        const result = prepareLog(selectedRef.current, history.find((entry) => entry.date === date));
+        next = result.items;
+        setHistory((entries) => [...entries.filter((entry) => entry.date !== date), result.entry].sort((a, b) => a.date.localeCompare(b.date)));
+      }
+      selectedRef.current = next;
+      setSelected(next);
+      if (!id || addingToMeal === id) setAddingToMeal(null);
+    } finally {
+      plateLock.current = false;
+      setPlateBusy(false);
     }
   };
 
@@ -698,6 +769,19 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
         return [...others, updatedEntry].sort((a, b) => a.date.localeCompare(b.date)).slice(-14);
       });
     }
+  };
+
+  const saveWeightEntry = async (date: string, weight: number) => {
+    const parsedDate = parseISO(date);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !isValid(parsedDate) ||
+      format(parsedDate, "yyyy-MM-dd") !== date || date > getLocalDateStr()) {
+      throw new Error("Choose a valid date that is not in the future.");
+    }
+    if (!Number.isFinite(weight) || weight <= 0) {
+      throw new Error("Enter a weight greater than zero in kg.");
+    }
+    if (!user || !fbDb) throw new Error("Sign in to save weight entries.");
+    await setDoc(doc(fbDb, "users", user.uid, "weight_logs", date), { date, weight });
   };
 
   const toggleTheme = () => setTheme((t) => (t === "light" ? "dark" : "light"));
@@ -797,8 +881,10 @@ export function NutritionProvider({ children }: { children: ReactNode }) {
       selected, addFood, updateItem, removeItem, clearAll,
       totals, rda, profile, setProfile,
       savedMeals, saveMeal, loadMeal, loadMealToPlate, deleteMeal,
+      wrapMeal, unwrapMeal, deleteWrappedMeal, logWrappedMeal, plateBusy, addingToMeal, setAddingToMeal,
       recentFoods, recentQuantities,
       logDay, updateLogCalories, history,
+      weightHistory, saveWeightEntry,
       theme, toggleTheme,
       customFoods, addCustomFood, updateCustomFood, deleteCustomFood,
       waterIntake, waterGoal, addWater, resetWater, setWaterGoal,

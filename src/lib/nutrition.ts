@@ -6,6 +6,8 @@ export interface SelectedFood {
   quantity: number;
   unit: SelectedUnit;
   portion?: FoodPortion;
+  mealGroup?: { id: string; name: string };
+  loggedDate?: string;
 }
 
 export type SelectedUnit = Unit | "portion";

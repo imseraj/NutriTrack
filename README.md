@@ -63,8 +63,9 @@ An account is required. Firebase Authentication protects nutrition data in Fires
 - **Paged search results** — load another page at the bottom of the results instead of fetching the full USDA catalog.
 - **On-demand food data** — FDC results are fetched as needed instead of importing thousands of food records into Firestore.
 - **Debounced auto-suggest** with keyboard navigation (↑/↓/Enter/Escape).
+- **Search guidance** — a visible USDA naming tip, clickable food/preparation examples, and a comma-separated retry for multi-word searches help users refine results. Queries are not silently rewritten; commas are suggested, not required.
 - **Recent foods** — automatically tracks your last 8 used foods for quick re-add.
-- **Duplicate prevention** — prevents adding the same food item twice with a friendly toast notification.
+- **Meal-aware duplicate prevention** — the same food can appear in separate wraps or outside a wrap with independent quantities. Within the same unlogged section, adjust an existing food's quantity rather than adding it again.
 
 ### 📊 Comprehensive Nutrition Table
 - Displays **37 tracked nutrient values** in a split-pane table with synchronized scrolling, plus cholesterol as an informational value.
@@ -95,15 +96,23 @@ An account is required. Firebase Authentication protects nutrition data in Fires
 - Color-coded severity badges: ✅ Success, ⚠️ Warning, ℹ️ Info, 🔴 Danger.
 
 ### 📈 Interactive Charts
-- **Macro Breakdown** — donut/pie chart showing calorie contribution from protein, carbs, and fat.
+- **Layout** — calorie trend and weight progress share the first row; macro breakdown and macro targets share the second. Charts stack on smaller screens. Micronutrient coverage and reference targets remain below.
+- **Weight History & Progress** — add or modify one dated weight entry in kg per day, with a history line chart and change since the first entry. Entries sync to the signed-in user's `weight_logs` Firestore collection. Weight logs do not modify profile weight or nutrition targets.
+- **Macronutrients vs Targets** — grouped bars compare current-plate protein, carbs, and fat in grams against daily targets.
+- **Macro Breakdown** — donut/pie chart showing estimated calorie shares from protein, carbs, and fat, alongside current-plate grams. Tooltips show rounded kcal and percentages. Estimates use 4/4/9 kcal per gram and may differ from database-reported food calories.
 - **Weekly Calorie Trend** — bar chart of daily logged calories with inline edit dialog to correct past entries.
-- **Micronutrient Coverage** — bar chart showing % of RDA for 15 key vitamins & minerals with color thresholds.
+- **Micronutrient Coverage** — bar chart showing % of target/limit for selected vitamins, minerals, and choline with color thresholds. Percentages use the same current-plate totals as the food table and are not capped at 200%.
 - **Reference Target Comparison** — scrollable list of tracked nutrients with RDA/AI/limit indicators where targets exist.
 
 ### 🍱 Saved Meals
-- Save your current plate as a named meal (e.g., "Recovery Breakfast").
-- Load meals back onto the plate with re-generated unique IDs.
-- **Quick log** — load a saved meal and simultaneously log it to your daily history.
+- **Wrap as Meal** groups all currently unwrapped, unlogged foods under a name without changing the table columns or logging calories. Each wrap has a vertical name, a thin outline, and a red delete icon.
+- Click a wrap or its vertical name to open a blurred-background action overlay: **Unwrap**, **Add food**, **Add to Calories**, or **Save as Meal**.
+- **Add food** focuses the existing search and shows an "Adding to" indicator. New selections go into that wrap until the indicator is dismissed; normal search adds outside existing wraps.
+- **Unwrap** removes only the grouping. Wrapped meals appear first, with all unwrapped foods together below them, including foods released from a wrap. The delete icon asks for confirmation before removing the group and its foods; neither action deletes recorded calories or saved templates.
+- **Save as Meal** in the overlay saves only that wrap as a reusable template. Wrapping and saving never log calories. The header's Save & Export still saves the whole plate and exports its PDF.
+- Load saved meals as new wraps with fresh item IDs, appending to the plate rather than replacing it. Loading a template from search while "Adding to" is active appends its foods to that wrap instead.
+- **Quick log** — add a saved meal as a new wrap and log that wrap to daily history.
+- Logged plate entries are marked and read-only; logging the whole plate skips them, preventing a wrapped meal from being counted twice. Log writes and markers are saved together in a Firestore transaction. Unwrapping retains the markers; saved templates omit them so they can be reused.
 - Search saved meals from the main search bar.
 - Delete meals with confirmation.
 
@@ -379,19 +388,9 @@ npx wrangler deploy
 
 For local development, copy `workers/fdc-api/.dev.vars.example` to `workers/fdc-api/.dev.vars` and put your key in that ignored local file. Start the Worker with `npx wrangler dev` and set `VITE_FDC_API_URL=http://127.0.0.1:8787` in the app's `.env`. For production, set `VITE_FDC_API_URL` to the `workers.dev` URL printed by deploy and rebuild the frontend.
 
-The Worker allows local Vite origins, the default Firebase Hosting domains, and `https://nutriotrack.netlify.app`. Add a custom production origin to `ALLOWED_ORIGINS` in `workers/fdc-api/wrangler.jsonc`, without a trailing slash or path, then redeploy the Worker. Searches default to SR Legacy and return 12 foods per page; users can explicitly search the other supported data types, and more results are loaded on demand. Search results are not written to Firestore. USDA nutrient values are mapped into the app's per-100 g or package-serving model. USDA FoodData Central data is public domain; attribution is requested by USDA.
+The Worker allows local Vite origins and the default Firebase Hosting domains. Add a custom production origin to `ALLOWED_ORIGINS` in `workers/fdc-api/wrangler.jsonc`. Searches default to SR Legacy and return 12 foods per page; users can explicitly search the other supported data types, and more results are loaded on demand. Search results are not written to Firestore. USDA nutrient values are mapped into the app's per-100 g or package-serving model. USDA FoodData Central data is public domain; attribution is requested by USDA.
 
-### Netlify deployment
-
-The Netlify frontend and the Cloudflare Worker are deployed separately. Deploying the frontend does not deploy the Worker or upload its secret.
-
-1. Deploy the Worker using the commands above. If it is already deployed, run `npx wrangler deploy` again after changing `ALLOWED_ORIGINS`.
-2. In Netlify, open the site's **Project configuration > Environment variables** and set `VITE_FDC_API_URL` to the HTTPS Worker URL printed by Wrangler, for example `https://nutritrack-fdc-api.<your-subdomain>.workers.dev`. Make the variable available to builds in the Production deploy context. Do not use the example placeholder or a localhost URL.
-3. Trigger a new production deploy. Vite embeds `VITE_*` variables during the build, so changing a Netlify environment variable does not update an existing deployment. Local `.env` files are ignored by Git and are not uploaded to Netlify.
-4. Ensure `nutriotrack.netlify.app` is listed in **Firebase Console > Authentication > Settings > Authorized domains** for authentication on this domain.
-5. Sign in on the deployed site and search for a food. `USDA search is not configured. Set VITE_FDC_API_URL.` means the frontend was built without the variable. A CORS error means the Worker must allow the site's exact origin and be redeployed.
-
-Keep `FDC_API_KEY` only in Cloudflare Worker secrets. Never put the USDA key in a `VITE_*` variable or the frontend bundle.
+The callable allows the local Vite origins and the default `nutritrack.web.app` / `nutritrack.firebaseapp.com` origins. Add any custom production origin to `allowedOrigins` in `functions/index.js`, then redeploy the function.
 
 ---
 

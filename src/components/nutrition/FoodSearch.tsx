@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, X, Sparkles, Tag, Loader2 } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { Search, X, Sparkles, Loader2 } from "lucide-react";
 import { Food } from "@/data/foods";
 import { useNutrition, SavedMeal } from "@/context/NutritionContext";
 import { motion, AnimatePresence } from "framer-motion";
@@ -22,8 +22,35 @@ export function FoodSearch() {
   const [fdcError, setFdcError] = useState<string | null>(null);
   const [loadingFoodId, setLoadingFoodId] = useState<string | null>(null);
 
-  const { addFood, recentFoods, customFoods, savedMeals, loadMealToPlate, globalFoods } = useNutrition();
+  const { addFood, recentFoods, customFoods, savedMeals, loadMealToPlate, globalFoods, selected, addingToMeal, setAddingToMeal, plateBusy } = useNutrition();
   const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const searchTipId = useId();
+  const commaQuery = !q.includes(",") && q.trim().split(/\s+/).length > 1
+    ? q.trim().split(/\s+/).join(", ")
+    : null;
+  const chooseQuery = (query: string) => {
+    setQ(query);
+    setOpen(true);
+    setActive(0);
+    inputRef.current?.focus();
+  };
+  const targetMeal = selected.find((item) => item.mealGroup?.id === addingToMeal)?.mealGroup;
+
+  useEffect(() => {
+    if (!addingToMeal) return;
+    const timer = setTimeout(() => {
+      inputRef.current?.focus();
+      inputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [addingToMeal]);
+
+  useEffect(() => {
+    if (addingToMeal && (!targetMeal || selected.some((item) => item.mealGroup?.id === addingToMeal && item.loggedDate))) {
+      setAddingToMeal(null);
+    }
+  }, [addingToMeal, targetMeal, selected, setAddingToMeal]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(q), 350);
@@ -160,30 +187,34 @@ export function FoodSearch() {
   const showSearchStatus = open && debounced.trim().length >= 2;
 
   const handlePick = async (x: SearchItem) => {
-    if (x.type === "food") {
-      if (x.isFdc) {
-        setLoadingFoodId(x.item.id);
-        try {
-          const fdcId = Number(x.item.id.replace(/^fdc-/, ""));
-          const detailedFood = await getFoodDataCentralDetails(fdcId);
-          addFood(detailedFood);
-        } catch (error) {
-          addFood(x.item);
-          toast({
-            title: "USDA portions unavailable",
-            description: error instanceof Error ? `${error.message} Added the food using its standard serving.` : "Added the food using its standard serving.",
-          });
-        } finally {
-          setLoadingFoodId(null);
+    if (plateBusy || loadingFoodId) return;
+    try {
+      if (x.type === "food") {
+        let food = x.item;
+        if (x.isFdc) {
+          setLoadingFoodId(x.item.id);
+          try {
+            const fdcId = Number(x.item.id.replace(/^fdc-/, ""));
+            food = await getFoodDataCentralDetails(fdcId);
+          } catch (error) {
+            toast({
+              title: "USDA portions unavailable",
+              description: error instanceof Error ? `${error.message} Using the standard serving.` : "Using the standard serving.",
+            });
+          }
         }
+        await addFood(food, addingToMeal);
       } else {
-        addFood(x.item);
+        await loadMealToPlate(x.item, addingToMeal);
       }
-    } else {
-      loadMealToPlate(x.item);
+      setQ("");
+      setOpen(false);
+    } catch (error) {
+      console.error("Could not add search result:", error);
+      toast({ title: "Could not add to plate", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    } finally {
+      setLoadingFoodId(null);
     }
-    setQ("");
-    setOpen(false);
   };
 
   const onKey = (e: React.KeyboardEvent) => {
@@ -196,14 +227,28 @@ export function FoodSearch() {
 
   return (
     <div className="relative w-full space-y-4" ref={ref}>
+      {targetMeal && (
+        <div className="flex items-center justify-between gap-2 rounded-xl border border-primary/30 bg-secondary/40 px-3 py-2 text-sm">
+          <span>Adding to: <strong>{targetMeal.name}</strong></span>
+          <button type="button" aria-label="Stop adding to meal" onClick={() => setAddingToMeal(null)} className="p-1 text-muted-foreground hover:text-primary"><X className="h-4 w-4" /></button>
+        </div>
+      )}
+      <p id={searchTipId} className="text-xs text-muted-foreground">
+        Search tip: USDA often lists the food first, then details, such as{" "}
+        <strong className="font-medium text-primary">rice, white, cooked</strong>.
+        {" "}If results look off, try comma-separated keywords and specify cooked or raw.
+      </p>
       <div className="relative">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
         <input
+          ref={inputRef}
+          aria-label="Search foods"
+          aria-describedby={searchTipId}
           value={q}
           onChange={(e) => { setQ(e.target.value); setOpen(true); setActive(0); }}
           onFocus={() => setOpen(true)}
           onKeyDown={onKey}
-          placeholder="Search SR Legacy foods, custom foods or saved meals..."
+          placeholder="Try rice, white, cooked or chicken, breast..."
           className="w-full h-14 pl-12 pr-12 rounded-2xl bg-card border border-border/60 text-base outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all shadow-card"
         />
         {q && (
@@ -221,6 +266,15 @@ export function FoodSearch() {
             transition={{ duration: 0.15 }}
             className="absolute z-30 mt-2 w-full glass-card overflow-hidden shadow-soft"
           >
+            {commaQuery && (
+              <div className="px-4 py-3 border-b border-border/50 text-xs">
+                <p className="text-muted-foreground mb-1">Not finding the right food? Try separating your keywords:</p>
+                <button type="button" onClick={() => chooseQuery(commaQuery)}
+                  className="font-semibold text-primary underline underline-offset-4 hover:text-primary-glow text-left">
+                  Search for &quot;{commaQuery}&quot;
+                </button>
+              </div>
+            )}
             {showRecent && (
               <div className="p-2">
                 <div className="px-3 py-2 text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
@@ -316,20 +370,14 @@ export function FoodSearch() {
         )}
       </AnimatePresence>
 
-      {/* Common search shortcuts */}
-      <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-        <div className="flex flex-wrap items-center gap-2 max-w-full overflow-x-auto scrollbar-hide py-1">
-          <span className="text-xs text-muted-foreground font-semibold flex items-center gap-1 shrink-0"><Tag className="h-3 w-3" /> Popular searches:</span>
-          {["Chicken", "Fruit", "Vegetables", "Grains", "Dairy", "Nuts"].map((c) => (
-            <button
-              key={c}
-              onClick={() => { setQ(c); setOpen(true); setActive(0); }}
-              className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all bg-secondary/60 hover:bg-secondary text-primary"
-            >
-              {c}
-            </button>
-          ))}
-        </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-muted-foreground">Try an example:</span>
+        {["rice, white, cooked", "chicken, breast, raw", "egg, whole, cooked"].map((example) => (
+          <button key={example} type="button" onClick={() => chooseQuery(example)}
+            className="rounded-full border border-border/60 px-3 py-1.5 text-xs text-primary hover:bg-secondary transition-colors">
+            {example}
+          </button>
+        ))}
       </div>
 
     </div>

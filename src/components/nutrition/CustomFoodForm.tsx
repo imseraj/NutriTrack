@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { getErrorMessage } from "@/lib/errorDetails";
 
 const emptyToUndefined = (val: unknown) => (val === "" || val === null ? undefined : val);
 
@@ -16,16 +17,16 @@ const foodFormSchema = z.object({
   name: z.string().min(1, "Food name is required"),
   category: z.string().min(1, "Category is required"),
   emoji: z.string().default("🍲"),
-  baseQuantity: z.coerce.number().positive("Must be > 0"),
+  baseQuantity: z.preprocess((value: unknown) => value, z.coerce.number().positive("Must be > 0")),
   baseUnit: z.string().min(1),
   servingSize: z.string().optional(),
   
-  calories: z.coerce.number().min(0, "Cannot be negative"),
-  protein: z.coerce.number().min(0, "Cannot be negative"),
-  carbohydrates: z.coerce.number().min(0, "Cannot be negative"),
-  fat: z.coerce.number().min(0, "Cannot be negative"),
-  fiber: z.coerce.number().min(0, "Cannot be negative"),
-  sugar: z.coerce.number().min(0, "Cannot be negative"),
+  calories: z.preprocess((value: unknown) => value, z.coerce.number().min(0, "Cannot be negative")),
+  protein: z.preprocess((value: unknown) => value, z.coerce.number().min(0, "Cannot be negative")),
+  carbohydrates: z.preprocess((value: unknown) => value, z.coerce.number().min(0, "Cannot be negative")),
+  fat: z.preprocess((value: unknown) => value, z.coerce.number().min(0, "Cannot be negative")),
+  fiber: z.preprocess((value: unknown) => value, z.coerce.number().min(0, "Cannot be negative")),
+  sugar: z.preprocess((value: unknown) => value, z.coerce.number().min(0, "Cannot be negative")),
   saturatedFat: z.preprocess(emptyToUndefined, z.coerce.number().min(0).optional()),
   monounsaturatedFat: z.preprocess(emptyToUndefined, z.coerce.number().min(0).optional()),
   polyunsaturatedFat: z.preprocess(emptyToUndefined, z.coerce.number().min(0).optional()),
@@ -69,6 +70,40 @@ const foodFormSchema = z.object({
 });
 
 type FoodFormValues = z.infer<typeof foodFormSchema>;
+type FoodFormInput = z.input<typeof foodFormSchema>;
+
+const vitaminFields = [
+  { id: "vitaminA", label: "Vitamin A (μg RAE)" },
+  { id: "vitaminC", label: "Vitamin C (mg)" },
+  { id: "vitaminD", label: "Vitamin D (μg)" },
+  { id: "vitaminE", label: "Vitamin E (mg)" },
+  { id: "vitaminK", label: "Vitamin K (μg)" },
+  { id: "vitaminB1", label: "B1 - Thiamin (mg)" },
+  { id: "vitaminB2", label: "B2 - Riboflavin (mg)" },
+  { id: "vitaminB3", label: "B3 - Niacin (mg)" },
+  { id: "vitaminB5", label: "B5 - Pantothenic (mg)" },
+  { id: "vitaminB6", label: "B6 (mg)" },
+  { id: "vitaminB7", label: "B7 - Biotin (μg)" },
+  { id: "vitaminB9", label: "B9 - Folate (μg DFE)" },
+  { id: "vitaminB12", label: "B12 (μg)" },
+  { id: "choline", label: "Choline (mg)" },
+] as const;
+
+const mineralFields = [
+  { id: "calcium", label: "Calcium (mg)" },
+  { id: "iron", label: "Iron (mg)" },
+  { id: "magnesium", label: "Magnesium (mg)" },
+  { id: "potassium", label: "Potassium (mg)" },
+  { id: "sodium", label: "Sodium (mg)" },
+  { id: "zinc", label: "Zinc (mg)" },
+  { id: "phosphorus", label: "Phosphorus (mg)" },
+  { id: "selenium", label: "Selenium (μg)" },
+  { id: "chloride", label: "Chloride (mg)" },
+  { id: "iodine", label: "Iodine (μg)" },
+  { id: "copper", label: "Copper (mg)" },
+  { id: "manganese", label: "Manganese (mg)" },
+  { id: "molybdenum", label: "Molybdenum (μg)" },
+] as const;
 
 interface CustomFoodFormProps {
   onSuccess?: () => void;
@@ -80,7 +115,7 @@ export function CustomFoodForm({ onSuccess, onCancel, foodToEdit }: CustomFoodFo
   const { addCustomFood, addGlobalFood, isAdmin, updateCustomFood, updateGlobalFood, deleteCustomFood } = useNutrition();
   const [showMicros, setShowMicros] = useState(false);
 
-  const form = useForm<FoodFormValues>({
+  const form = useForm<FoodFormInput, undefined, FoodFormValues>({
     resolver: zodResolver(foodFormSchema),
     defaultValues: {
       name: "",
@@ -89,12 +124,12 @@ export function CustomFoodForm({ onSuccess, onCancel, foodToEdit }: CustomFoodFo
       baseQuantity: 100,
       baseUnit: "g",
       servingSize: "",
-      calories: "" as any,
-      protein: "" as any,
-      carbohydrates: "" as any,
-      fat: "" as any,
-      fiber: "" as any,
-      sugar: "" as any,
+      calories: "",
+      protein: "",
+      carbohydrates: "",
+      fat: "",
+      fiber: "",
+      sugar: "",
       publishGlobally: false,
     }
   });
@@ -138,12 +173,12 @@ export function CustomFoodForm({ onSuccess, onCancel, foodToEdit }: CustomFoodFo
         baseQuantity: 100,
         baseUnit: "g",
         servingSize: "",
-        calories: "" as any,
-        protein: "" as any,
-        carbohydrates: "" as any,
-        fat: "" as any,
-        fiber: "" as any,
-        sugar: "" as any,
+        calories: "",
+        protein: "",
+        carbohydrates: "",
+        fat: "",
+        fiber: "",
+        sugar: "",
         publishGlobally: false,
       });
       setShowMicros(false);
@@ -245,10 +280,10 @@ export function CustomFoodForm({ onSuccess, onCancel, foodToEdit }: CustomFoodFo
       reset();
       setShowMicros(false);
       if (onSuccess) onSuccess();
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         title: "Save Failed",
-        description: err.message || "An error occurred while saving.",
+        description: getErrorMessage(err) ?? "An error occurred while saving.",
         variant: "destructive",
       });
     }
@@ -447,25 +482,6 @@ export function CustomFoodForm({ onSuccess, onCancel, foodToEdit }: CustomFoodFo
         </div>
       </div>
 
-      <div className="space-y-3">
-        <h5 className="text-xs font-bold text-accent uppercase tracking-wider">Fat profile (per base quantity)</h5>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-          {[
-            { id: "saturatedFat", label: "Saturated fat (g)" },
-            { id: "monounsaturatedFat", label: "Monounsaturated (g)" },
-            { id: "polyunsaturatedFat", label: "Polyunsaturated (g)" },
-            { id: "omega3Ala", label: "ALA omega-3 (g)" },
-            { id: "cholesterol", label: "Cholesterol (mg, info)" },
-          ].map((field) => (
-            <div key={field.id} className="space-y-1">
-              <Label htmlFor={`inline-${field.id}`} className="text-[11px] text-muted-foreground">{field.label}</Label>
-              <Input id={`inline-${field.id}`} type="number" step="any" {...register(field.id as keyof FoodFormValues)} placeholder="0" className="h-9 rounded-lg" />
-              <ErrorMsg field={field.id as keyof FoodFormValues} />
-            </div>
-          ))}
-        </div>
-      </div>
-
       {/* Section 3: Micronutrients Accordion */}
       <div className="rounded-2xl border border-border overflow-hidden">
         <button
@@ -482,26 +498,11 @@ export function CustomFoodForm({ onSuccess, onCancel, foodToEdit }: CustomFoodFo
             <div>
               <h5 className="text-xs font-bold text-accent uppercase tracking-wider mb-2">Vitamins</h5>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {[
-                  { id: "vitaminA", label: "Vitamin A (μg RAE)" },
-                  { id: "vitaminC", label: "Vitamin C (mg)" },
-                  { id: "vitaminD", label: "Vitamin D (μg)" },
-                  { id: "vitaminE", label: "Vitamin E (mg)" },
-                  { id: "vitaminK", label: "Vitamin K (μg)" },
-                  { id: "vitaminB1", label: "B1 - Thiamin (mg)" },
-                  { id: "vitaminB2", label: "B2 - Riboflavin (mg)" },
-                  { id: "vitaminB3", label: "B3 - Niacin (mg)" },
-                  { id: "vitaminB5", label: "B5 - Pantothenic (mg)" },
-                  { id: "vitaminB6", label: "B6 (mg)" },
-                  { id: "vitaminB7", label: "B7 - Biotin (μg)" },
-                  { id: "vitaminB9", label: "B9 - Folate (μg DFE)" },
-                  { id: "vitaminB12", label: "B12 (μg)" },
-                  { id: "choline", label: "Choline (mg)" },
-                ].map((v) => (
+                {vitaminFields.map((v) => (
                   <div key={v.id} className="space-y-1">
                     <Label htmlFor={v.id} className="text-[11px] text-muted-foreground">{v.label}</Label>
-                    <Input id={v.id} type="number" step="any" {...register(v.id as any)} placeholder="0" className="h-9 rounded-lg" />
-                    <ErrorMsg field={v.id as any} />
+                    <Input id={v.id} type="number" step="any" {...register(v.id)} placeholder="0" className="h-9 rounded-lg" />
+                    <ErrorMsg field={v.id} />
                   </div>
                 ))}
               </div>
@@ -510,25 +511,11 @@ export function CustomFoodForm({ onSuccess, onCancel, foodToEdit }: CustomFoodFo
             <div className="pt-4">
               <h5 className="text-xs font-bold text-accent uppercase tracking-wider mb-2">Minerals & Trace Elements</h5>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {[
-                  { id: "calcium", label: "Calcium (mg)" },
-                  { id: "iron", label: "Iron (mg)" },
-                  { id: "magnesium", label: "Magnesium (mg)" },
-                  { id: "potassium", label: "Potassium (mg)" },
-                  { id: "sodium", label: "Sodium (mg)" },
-                  { id: "zinc", label: "Zinc (mg)" },
-                  { id: "phosphorus", label: "Phosphorus (mg)" },
-                  { id: "selenium", label: "Selenium (μg)" },
-                  { id: "chloride", label: "Chloride (mg)" },
-                  { id: "iodine", label: "Iodine (μg)" },
-                  { id: "copper", label: "Copper (mg)" },
-                  { id: "manganese", label: "Manganese (mg)" },
-                  { id: "molybdenum", label: "Molybdenum (μg)" },
-                ].map((m) => (
+                {mineralFields.map((m) => (
                   <div key={m.id} className="space-y-1">
                     <Label htmlFor={m.id} className="text-[11px] text-muted-foreground">{m.label}</Label>
-                    <Input id={m.id} type="number" step="any" {...register(m.id as any)} placeholder="0" className="h-9 rounded-lg" />
-                    <ErrorMsg field={m.id as any} />
+                    <Input id={m.id} type="number" step="any" {...register(m.id)} placeholder="0" className="h-9 rounded-lg" />
+                    <ErrorMsg field={m.id} />
                   </div>
                 ))}
               </div>

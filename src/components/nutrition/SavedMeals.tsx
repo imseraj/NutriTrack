@@ -2,10 +2,24 @@ import { useState } from "react";
 import { useNutrition } from "@/context/NutritionContext";
 import { Bookmark, Plus, Trash2, FileDown, History as HistoryIcon } from "lucide-react";
 import { exportPDF } from "@/lib/pdf";
+import { toast } from "@/hooks/use-toast";
 
 export function SavedMeals() {
   const { savedMeals, saveMeal, loadMeal, deleteMeal, selected, totals, rda, profile, logDay } = useNutrition();
   const [name, setName] = useState("");
+  const [pending, setPending] = useState(false);
+  const perform = async (action: () => Promise<unknown>) => {
+    if (pending) return;
+    setPending(true);
+    try {
+      await action();
+    } catch (error) {
+      console.error("Saved meal action failed:", error);
+      toast({ title: "Meal action failed", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    } finally {
+      setPending(false);
+    }
+  };
 
   return (
     <div className="glass-card p-5 space-y-4">
@@ -19,15 +33,15 @@ export function SavedMeals() {
       <div className="flex gap-2">
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Meal name (e.g. Lunch)"
           className="flex-1 h-10 px-3 rounded-xl bg-background border border-border text-sm outline-none focus:border-primary" />
-        <button onClick={() => { saveMeal(name); setName(""); }}
-          disabled={!name.trim() || selected.length === 0}
+        <button onClick={() => void perform(async () => { await saveMeal(name); setName(""); })}
+          disabled={pending || !name.trim() || selected.length === 0}
           className="h-10 px-4 rounded-xl gradient-primary text-primary-foreground text-sm font-medium flex items-center gap-1.5 shadow-glow disabled:opacity-50 disabled:shadow-none">
           <Plus className="h-4 w-4" /> Save
         </button>
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <button onClick={() => logDay()} disabled={selected.length === 0}
+        <button onClick={() => void perform(() => logDay())} disabled={pending || !selected.some((item) => !item.loggedDate)}
           className="h-10 px-3 rounded-xl bg-secondary hover:bg-muted text-sm font-medium flex items-center justify-center gap-1.5 disabled:opacity-50 transition-colors">
           <HistoryIcon className="h-4 w-4" /> Add Today's Calories
         </button>
@@ -42,7 +56,7 @@ export function SavedMeals() {
           <p className="text-xs text-muted-foreground text-center py-4">No saved meals yet</p>
         ) : savedMeals.map((m) => (
           <div key={m.id} className="flex items-center justify-between p-3 rounded-xl bg-secondary/50 hover:bg-secondary transition-colors">
-            <button onClick={() => loadMeal(m.id)} className="flex-1 text-left">
+            <button disabled={pending} onClick={() => void perform(() => loadMeal(m.id))} className="flex-1 text-left">
               <div className="text-sm font-medium">{m.name}</div>
               <div className="text-[10px] text-muted-foreground">{m.items.length} items · {new Date(m.savedAt).toLocaleDateString()}</div>
             </button>
